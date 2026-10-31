@@ -1,0 +1,240 @@
+:root {
+  --pastel-bg: #fdf8f3;
+  --pastel-card: #ffffff;
+  --pastel-pink: #fde2e4;
+  --pastel-lilac: #ece4ff;
+  --pastel-mint: #dcf5d6;
+  --pastel-sky: #d6ecff;
+  --pastel-peach: #ffe5c4;
+  --accent: #8a6fd1;
+  --accent-dark: #6a50b3;
+  --text: #3b3346;
+  --muted: #625a6e;
+  --danger: #b4234a;
+  --danger-bg: #ffe3ea;
+  --radius: 16px;
+  font-family: 'Nunito', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background: var(--pastel-bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(160deg, var(--pastel-pink), var(--pastel-lilac) 45%, var(--pastel-sky));
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 2.25rem;
+  color: var(--accent-dark);
+}
+
+h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.card {
+  background: var(--pastel-card);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 6px 20px rgba(138, 111, 209, 0.12);
+}
+
+.landing {
+  text-align: center;
+}
+
+button {
+  font: inherit;
+  border: none;
+  border-radius: 999px;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  background: var(--pastel-lilac);
+  color: var(--text);
+}
+
+button.primary {
+  background: var(--accent-dark);
+  color: #fff;
+  font-weight: 700;
+  padding: 0.75rem 1.75rem;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+button:focus-visible,
+input:focus-visible,
+.avatar-option:focus-within {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.join-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+label,
+legend {
+  font-weight: 700;
+}
+
+input[type='text'] {
+  font: inherit;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 2px solid var(--pastel-lilac);
+  background: #fff;
+  color: var(--text);
+}
+
+input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.field-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.hint {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.avatar-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.6rem 0.4rem;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  background: var(--pastel-bg);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.avatar-option.selected {
+  border-color: var(--accent);
+  background: var(--pastel-lilac);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: var(--pastel-sky);
+}
+
+.notice.error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.room-title {
+  text-align: center;
+}
+
+.share-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.share-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.6rem;
+}
+
+.roster-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  background: var(--pastel-bg);
+}
+
+.roster-name {
+  flex: 1;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.you {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.badge {
+  background: var(--pastel-peach);
+  color: #8a5a1f;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
