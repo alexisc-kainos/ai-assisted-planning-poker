@@ -62,7 +62,7 @@ Tells the client its own assigned `id`. The frontend should store this and compa
 
 ### `state`
 
-Broadcast to **all** clients in a room whenever anything changes (join, leave, vote, reveal, reset, host change). The broadcast always includes the originator. Every `state` message is a full snapshot — clients should replace, not merge.
+Broadcast to **all** clients in a room whenever anything changes (join, leave, vote, reveal, reset, ticket change, host change). The broadcast always includes the originator. Every `state` message is a full snapshot — clients should replace, not merge.
 
 ```json
 {
@@ -70,6 +70,7 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
   "hostId": "user-abc123",
   "revealed": false,
   "deck": "fibonacci",
+  "ticket": { "type": "story", "content": "As a user I want to log in" },
   "users": [
     { "id": "user-abc123", "name": "Alice", "avatar": "capybara", "hasVoted": true },
     { "id": "user-def456", "name": "Bob", "avatar": "penguin", "hasVoted": false }
@@ -82,6 +83,7 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
 - Once revealed, `votes` is populated: `{ "user-abc123": "5", "user-def456": "8" }`.
 - `hasVoted` lets the UI show "voted" indicators without exposing values pre-reveal.
 - `deck` is included only when the room-creating connection provided a non-blank value. The backend does not choose or default the deck; when absent, the field is omitted from `state`.
+- `ticket` is the room's single active ticket, or `null` until the host sets one (see `setTicket`). It is always present. It survives host changes and is discarded with the room.
 - `users` is ordered by join order (`seq`). `users[].avatar` is included only when that connection provided a non-blank `avatar`; otherwise it is omitted.
 - A user disconnecting mid-round is removed from `users[]` and from the `votes` map; no auto-reveal flip occurs. If a host disconnects, the roster change and the host-promotion ride the same `state` message.
 - Reconnects are fresh users (new `id`, new `seq`, no vote) and do not regain host, even if they were the original host.
@@ -104,6 +106,7 @@ The full error vocabulary:
 | `vote` while `revealed === true` | `Voting is locked until reset` |
 | `reveal` by non-host | `Only the host can reveal votes` |
 | `reset` by non-host | `Only the host can reset votes` |
+| `setTicket` by non-host | `Only the host can set the ticket` |
 | `reveal` when already revealed | `Votes are already revealed` |
 | `reset` when already reset (no votes, unrevealed) | `Votes are already reset` |
 | Inbound rate limit exceeded | `Rate limit exceeded` |
@@ -121,7 +124,7 @@ The socket is kept open after any `error` except where noted.
 { "type": "vote", "value": "5" }
 ```
 
-`value` is a free-form string (so any deck — Fibonacci, T-shirt sizes, "?", "☕", etc. — works without backend changes). Bounds: 1–64 chars after trim, no character restrictions. Sending `vote` with a numeric value (e.g. `5` instead of `"5"`) is rejected with `Invalid vote message`. Re-voting before reveal overwrites the previous vote. `vote` after `reveal` is rejected with `Voting is locked until reset`.
+`value` is a free-form string (so any deck — Fibonacci, T-shirt sizes, "?", "☕", etc. — works without backend changes). Bounds: 1–64 chars after trim, no character restrictions. Sending `vote` with a numeric value (e.g. `5` instead of `"5"`) is rejected with `Invalid vote message`. Re-voting before reveal overwrites the previous vote. `vote` after `reveal` is rejected with `Voting is locked until reset`. Voting does not require a ticket to be set, and there is no way to withdraw a vote other than `reset`.
 
 ### `reveal`
 
@@ -138,6 +141,14 @@ Host-only. Sets `revealed: true` and populates `votes` in the next `state` broad
 ```
 
 Host-only. Clears all votes, sets `revealed: false`, and broadcasts `state` (always, even if already unrevealed with no votes — for predictability the invalid case is rejected instead, see `error` table above). If sent by a non-host, server responds with `Only the host can reset votes` and ignores the action.
+
+### `setTicket`
+
+```json
+{ "type": "setTicket", "ticket": { "type": "story", "content": "As a user I want to log in" } }
+```
+
+Host-only. Sets or replaces the room's single active ticket and broadcasts `state`. `ticket.type` must be `"story"` (other types are rejected for now). `ticket.content` is plain text, trimmed by the server, 1–500 chars after trim; line breaks are allowed. Clients must render it as text, never as HTML. Votes and `revealed` are left unchanged, so the host can correct the text mid-round. Bad shapes are rejected with `Invalid setTicket message`; a non-host gets `Only the host can set the ticket`. A ticket cannot be cleared once set.
 
 ### Disconnection
 

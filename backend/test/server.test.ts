@@ -33,6 +33,7 @@ describe('create and join handshake', () => {
       hostId: first.userId,
       revealed: false,
       deck: 'fibonacci',
+      ticket: null,
       users: [{ id: first.userId, name: 'Alice', avatar: 'capybara', hasVoted: false }],
       votes: null,
     });
@@ -301,6 +302,134 @@ describe('voting, reveal and reset', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(host.messages).toEqual([]);
     expect(guest.messages).toEqual([]);
+  });
+
+  it.each(['1', '2', '3', '5', '8', '13', '20', '☕'])('accepts the story-deck vote %s', async (value) => {
+    const { host, guest, guestId } = await twoUsers();
+    guest.send({ type: 'vote', value });
+    await host.next('state');
+    host.send({ type: 'reveal' });
+    expect((await host.next('state')).votes).toEqual({ [guestId]: value });
+    await guest.settledState();
+  });
+
+  it('broadcasts a vote as hasVoted only, without the value anywhere in the frame', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    guest.send({ type: 'vote', value: '☕' });
+    const [hostView, guestView] = [await host.next('state'), await guest.next('state')];
+    for (const view of [hostView, guestView]) {
+      expect(view.votes).toBeNull();
+      expect(view.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
+      expect(JSON.stringify(view)).not.toContain('☕');
+    }
+  });
+
+  it('keeps only the latest vote when a participant changes their mind', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    for (const value of ['3', '8', '13']) {
+      guest.send({ type: 'vote', value });
+      expect((await host.next('state')).votes).toBeNull();
+    }
+    host.send({ type: 'reveal' });
+    expect((await host.next('state')).votes).toEqual({ [guestId]: '13' });
+  });
+
+  it('does not require anyone to vote', async () => {
+    const { host, guest } = await twoUsers();
+    host.send({ type: 'setTicket', ticket: { type: 'story', content: 'Login page' } });
+    expect((await guest.next('state')).users.every((u: Message) => !u.hasVoted)).toBe(true);
+    await host.next('state');
+    host.send({ type: 'reveal' });
+    expect((await guest.next('state')).votes).toEqual({});
+  });
+
+  it('accepts a vote before any ticket is set', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    guest.send({ type: 'vote', value: '5' });
+    const state = await host.next('state');
+    expect(state.ticket).toBeNull();
+    expect(state.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
+  });
+});
+
+describe('story ticket', () => {
+  async function twoUsers() {
+    await start();
+    const host = await connect(port, { room: ROOM, name: 'Host' });
+    await host.next('welcome');
+    const guest = await connect(port, { room: ROOM, name: 'Guest' });
+    const { userId: guestId } = await guest.next('welcome');
+    await host.settledState();
+    await guest.settledState();
+    return { host, guest, guestId };
+  }
+
+  const setTicket = (content: unknown, type: unknown = 'story') => ({ type: 'setTicket', ticket: { type, content } });
+
+  it('lets the host set a trimmed story ticket that everyone, including late joiners, sees', async () => {
+    const { host, guest } = await twoUsers();
+    host.send(setTicket('  As a user\nI want to log in  '));
+    const expected = { type: 'story', content: 'As a user\nI want to log in' };
+    expect((await guest.next('state')).ticket).toEqual(expected);
+    expect((await host.next('state')).ticket).toEqual(expected);
+
+    const late = await connect(port, { room: ROOM, name: 'Late' });
+    expect((await late.next('state')).ticket).toEqual(expected);
+  });
+
+  it('rejects a non-host setting the ticket without broadcasting', async () => {
+    const { host, guest } = await twoUsers();
+    guest.send(setTicket('Sneaky'));
+    expect(await guest.next('error')).toEqual({ type: 'error', message: 'Only the host can set the ticket' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(host.messages).toEqual([]);
+  });
+
+  it.each([
+    ['no ticket', { type: 'setTicket' }],
+    ['ticket not an object', { type: 'setTicket', ticket: 'Login' }],
+    ['spike type', setTicket('Login', 'spike')],
+    ['non-string content', setTicket(42)],
+    ['blank content', setTicket('   ')],
+    ['content over 500 chars', setTicket('x'.repeat(501))],
+  ])('rejects %s with Invalid setTicket message', async (_label, message) => {
+    const { host } = await twoUsers();
+    host.send(message);
+    expect((await host.next('error')).message).toBe('Invalid setTicket message');
+  });
+
+  it('accepts content of exactly 500 chars', async () => {
+    const { host } = await twoUsers();
+    host.send(setTicket('x'.repeat(500)));
+    expect((await host.next('state')).ticket.content).toHaveLength(500);
+  });
+
+  it('keeps votes when the host edits the ticket', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    host.send(setTicket('Login'));
+    await host.next('state');
+    await guest.next('state');
+    guest.send({ type: 'vote', value: '5' });
+    await host.next('state');
+    await guest.next('state');
+
+    host.send(setTicket('Login with SSO'));
+    const state = await guest.next('state');
+    expect(state.ticket.content).toBe('Login with SSO');
+    expect(state.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
+    expect(state.revealed).toBe(false);
+  });
+
+  it('keeps the ticket when the host leaves and lets the promoted host edit it', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    host.send(setTicket('Login'));
+    await guest.next('state');
+    await host.close();
+    const promoted = await guest.next('state');
+    expect(promoted).toMatchObject({ hostId: guestId, ticket: { type: 'story', content: 'Login' } });
+
+    guest.send(setTicket('Logout'));
+    expect((await guest.next('state')).ticket.content).toBe('Logout');
   });
 });
 

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { JoinForm } from './JoinForm';
 import { Roster } from './Roster';
+import { TicketPanel } from './TicketPanel';
+import { VoteDeck } from './VoteDeck';
 import { joinUrl } from './room';
 import { useRoom } from './useRoom';
 
@@ -31,10 +33,11 @@ function CopyLink({ url }: { url: string }) {
 }
 
 export function RoomPage({ roomId }: { roomId: string }) {
-  const { status, error, capacity, userId, state, join } = useRoom(roomId);
+  const { status, error, capacity, userId, state, myVote, join, vote, setTicket } = useRoom(roomId);
   const url = joinUrl(roomId);
 
   if (status === 'joined' && state) {
+    const me = state.users.find((user) => user.id === userId);
     return (
       <>
         {error && (
@@ -43,6 +46,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
           </p>
         )}
         <CopyLink url={url} />
+        <TicketPanel ticket={state.ticket} isHost={state.hostId === userId} onSetTicket={setTicket} />
+        <VoteDeck selected={me?.hasVoted ? myVote : null} disabled={state.revealed} onVote={vote} />
         <Roster users={state.users} hostId={state.hostId} meId={userId} />
       </>
     );

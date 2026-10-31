@@ -6,12 +6,19 @@ import { markCreator } from '../room';
 import { MAX_RECONNECT_ATTEMPTS, reconnectDelay } from '../useRoom';
 
 class FakeWebSocket {
+  static readonly OPEN = 1;
   static instances: FakeWebSocket[] = [];
+  readyState = FakeWebSocket.OPEN;
+  sent: unknown[] = [];
   onmessage: ((event: { data: string }) => void) | null = null;
   onclose: ((event: { code: number }) => void) | null = null;
 
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
+  }
+
+  send(data: string) {
+    this.sent.push(JSON.parse(data));
   }
 
   close() {}
@@ -122,6 +129,65 @@ describe('RoomPage', () => {
     await fillAndJoin();
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't reach the server. Please try again.");
+  });
+
+  describe('voting on a story ticket', () => {
+    const roomState = (hasVoted: boolean, hostId = 'user-a') => ({
+      type: 'state',
+      hostId,
+      revealed: false,
+      ticket: { type: 'story', content: 'Login page' },
+      users: [
+        { id: 'user-a', name: 'Alice', avatar: 'cat', hasVoted: false },
+        { id: 'user-b', name: 'Bob', avatar: 'penguin', hasVoted },
+      ],
+      votes: null,
+    });
+
+    async function joinAs(userId: string, hostId = 'user-a') {
+      mockRoomStatus({ exists: true, userCount: 1, capacity: 50, full: false });
+      render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin('Bob', 'Penguin');
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      const ws = FakeWebSocket.instances[0];
+      ws.emit({ type: 'welcome', userId });
+      ws.emit(roomState(false, hostId));
+      return ws;
+    }
+
+    it('sends my vote, highlights it once the server confirms, and lets me change it', async () => {
+      const ws = await joinAs('user-b');
+      const user = userEvent.setup();
+      expect(screen.getByText('Login page')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '5' }));
+      expect(ws.sent).toEqual([{ type: 'vote', value: '5' }]);
+      ws.emit(roomState(true));
+      expect(screen.getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true');
+
+      await user.click(screen.getByRole('button', { name: '13' }));
+      expect(ws.sent.at(-1)).toEqual({ type: 'vote', value: '13' });
+      expect(screen.getByRole('button', { name: '13' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('clears my highlighted card when the server says I have not voted', async () => {
+      const ws = await joinAs('user-b');
+      await userEvent.setup().click(screen.getByRole('button', { name: '8' }));
+      ws.emit(roomState(true));
+      ws.emit(roomState(false));
+      expect(screen.getByRole('button', { name: '8' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('lets the host set the ticket', async () => {
+      const ws = await joinAs('user-b', 'user-b');
+      const user = userEvent.setup();
+      const textarea = screen.getByLabelText('What are we estimating?');
+      await user.clear(textarea);
+      await user.type(textarea, 'Logout');
+      await user.click(screen.getByRole('button', { name: 'Update ticket' }));
+      expect(ws.sent).toEqual([{ type: 'setTicket', ticket: { type: 'story', content: 'Logout' } }]);
+    });
   });
 
   describe('after a server_shutdown close', () => {

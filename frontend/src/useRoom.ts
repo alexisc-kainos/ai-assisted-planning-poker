@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_URL, DEFAULT_DECK, WS_URL } from './config';
 import { isCreator } from './room';
-import type { RoomState, RoomStatus, ServerMessage } from './types';
+import type { ClientMessage, RoomState, RoomStatus, ServerMessage } from './types';
 
 export type JoinStatus = 'idle' | 'checking' | 'connecting' | 'joined' | 'reconnecting' | 'full' | 'error';
 
@@ -25,6 +25,7 @@ export function useRoom(roomId: string) {
   const [capacity, setCapacity] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
+  const [myVote, setMyVote] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -56,6 +57,7 @@ export function useRoom(roomId: string) {
         socketRef.current = null;
         setState(null);
         setUserId(null);
+        setMyVote(null);
 
         const retry = (attempt: number) => {
           setStatus('reconnecting');
@@ -101,6 +103,24 @@ export function useRoom(roomId: string) {
     [roomId, connect],
   );
 
+  const send = useCallback((message: ClientMessage) => {
+    const ws = socketRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
+  }, []);
+
+  const vote = useCallback(
+    (value: string) => {
+      setMyVote(value);
+      send({ type: 'vote', value });
+    },
+    [send],
+  );
+
+  const setTicket = useCallback(
+    (content: string) => send({ type: 'setTicket', ticket: { type: 'story', content } }),
+    [send],
+  );
+
   useEffect(
     () => () => {
       clearTimeout(reconnectTimer.current);
@@ -111,5 +131,5 @@ export function useRoom(roomId: string) {
     [],
   );
 
-  return { status, error, capacity, userId, state, join };
+  return { status, error, capacity, userId, state, myVote, join, vote, setTicket };
 }

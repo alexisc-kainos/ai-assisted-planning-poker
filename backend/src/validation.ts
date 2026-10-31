@@ -4,6 +4,7 @@ export const MAX_NAME_LENGTH = 32;
 export const MAX_DECK_LENGTH = 32;
 export const MAX_AVATAR_LENGTH = 32;
 export const MAX_VOTE_LENGTH = 64;
+export const MAX_TICKET_LENGTH = 500;
 
 const charLength = (value: string): number => Array.from(value).length;
 
@@ -40,7 +41,16 @@ export function parseConnectParams(params: URLSearchParams): ConnectParams | nul
   return { room, name, deck: deck.value, avatar: avatar.value };
 }
 
-export type ClientMessage = { type: 'vote'; value: string } | { type: 'reveal' } | { type: 'reset' };
+export interface Ticket {
+  type: 'story';
+  content: string;
+}
+
+export type ClientMessage =
+  | { type: 'vote'; value: string }
+  | { type: 'reveal' }
+  | { type: 'reset' }
+  | { type: 'setTicket'; ticket: Ticket };
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };
 
@@ -67,6 +77,17 @@ export function parseClientMessage(raw: string): ParseResult {
       return { ok: true, message: { type: 'reveal' } };
     case 'reset':
       return { ok: true, message: { type: 'reset' } };
+    case 'setTicket': {
+      const invalid = { ok: false, error: 'Invalid setTicket message' } as const;
+      const { ticket } = message;
+      if (typeof ticket !== 'object' || ticket === null || Array.isArray(ticket)) return invalid;
+      const { type, content } = ticket as Record<string, unknown>;
+      if (type !== 'story' || typeof content !== 'string') return invalid;
+      const trimmed = content.trim();
+      const length = charLength(trimmed);
+      if (length < 1 || length > MAX_TICKET_LENGTH) return invalid;
+      return { ok: true, message: { type: 'setTicket', ticket: { type, content: trimmed } } };
+    }
     default:
       return { ok: false, error: 'Unknown message type' };
   }
