@@ -75,13 +75,15 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
     { "id": "user-abc123", "name": "Alice", "avatar": "capybara", "hasVoted": true },
     { "id": "user-def456", "name": "Bob", "avatar": "penguin", "hasVoted": false }
   ],
-  "votes": null
+  "votes": null,
+  "myVote": "5"
 }
 ```
 
 - `votes` is `null` while `revealed` is `false`, so vote values are never leaked early.
 - Once revealed, `votes` is populated: `{ "user-abc123": "5", "user-def456": "8" }`.
 - `hasVoted` lets the UI show "voted" indicators without exposing values pre-reveal.
+- `myVote` is the receiving client's own current vote (or `null`), so the UI can show which card the server actually holds. It is the only per-recipient field; it never carries anyone else's value, and is the authoritative selection after a rejected re-vote.
 - `deck` is included only when the room-creating connection provided a non-blank value. The backend does not choose or default the deck; when absent, the field is omitted from `state`.
 - `ticket` is the room's single active ticket, or `null` until the host sets one (see `setTicket`). It is always present. It survives host changes and is discarded with the room.
 - `users` is ordered by join order (`seq`). `users[].avatar` is included only when that connection provided a non-blank `avatar`; otherwise it is omitted.

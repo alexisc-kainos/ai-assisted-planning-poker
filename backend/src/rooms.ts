@@ -17,6 +17,7 @@ export interface StateMessage {
   ticket: Ticket | null;
   users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean }>;
   votes: Record<string, string> | null;
+  myVote: string | null;
 }
 
 export class Room {
@@ -87,7 +88,7 @@ export class Room {
     return null;
   }
 
-  snapshot(): StateMessage {
+  snapshot(forUserId: string): StateMessage {
     const members = [...this.members.values()].sort((a, b) => a.seq - b.seq);
     const state: StateMessage = {
       type: 'state',
@@ -105,6 +106,7 @@ export class Room {
             members.filter((m) => m.vote !== undefined).map((m) => [m.id, m.vote as string]),
           )
         : null,
+      myVote: this.members.get(forUserId)?.vote ?? null,
     };
     if (this.deck) state.deck = this.deck;
     return state;

@@ -18,6 +18,7 @@ export interface RoomState {
   ticket: Ticket | null;
   users: RosterUser[];
   votes: Record<string, string> | null;
+  myVote: string | null;
 }
 
 export type ServerMessage =

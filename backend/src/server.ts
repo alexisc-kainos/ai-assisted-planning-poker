@@ -50,9 +50,8 @@ export function createAppServer(config: Config): AppServer {
   };
 
   const broadcast = (room: Room) => {
-    const payload = JSON.stringify(room.snapshot());
-    for (const ws of roomSockets.get(room.id)?.values() ?? []) {
-      if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+    for (const [userId, ws] of roomSockets.get(room.id) ?? []) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(room.snapshot(userId)));
     }
   };
 

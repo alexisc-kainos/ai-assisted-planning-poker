@@ -25,7 +25,6 @@ export function useRoom(roomId: string) {
   const [capacity, setCapacity] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
-  const [myVote, setMyVote] = useState<string | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -57,7 +56,6 @@ export function useRoom(roomId: string) {
         socketRef.current = null;
         setState(null);
         setUserId(null);
-        setMyVote(null);
 
         const retry = (attempt: number) => {
           setStatus('reconnecting');
@@ -108,13 +106,7 @@ export function useRoom(roomId: string) {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
   }, []);
 
-  const vote = useCallback(
-    (value: string) => {
-      setMyVote(value);
-      send({ type: 'vote', value });
-    },
-    [send],
-  );
+  const vote = useCallback((value: string) => send({ type: 'vote', value }), [send]);
 
   const setTicket = useCallback(
     (content: string) => send({ type: 'setTicket', ticket: { type: 'story', content } }),
@@ -131,5 +123,5 @@ export function useRoom(roomId: string) {
     [],
   );
 
-  return { status, error, capacity, userId, state, myVote, join, vote, setTicket };
+  return { status, error, capacity, userId, state, join, vote, setTicket };
 }

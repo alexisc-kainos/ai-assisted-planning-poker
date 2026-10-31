@@ -36,6 +36,7 @@ describe('create and join handshake', () => {
       ticket: null,
       users: [{ id: first.userId, name: 'Alice', avatar: 'capybara', hasVoted: false }],
       votes: null,
+      myVote: null,
     });
   });
 
@@ -313,15 +314,40 @@ describe('voting, reveal and reset', () => {
     await guest.settledState();
   });
 
-  it('broadcasts a vote as hasVoted only, without the value anywhere in the frame', async () => {
+  it('broadcasts a vote as hasVoted only, telling just the voter their own value', async () => {
     const { host, guest, guestId } = await twoUsers();
     guest.send({ type: 'vote', value: '☕' });
     const [hostView, guestView] = [await host.next('state'), await guest.next('state')];
     for (const view of [hostView, guestView]) {
       expect(view.votes).toBeNull();
       expect(view.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
-      expect(JSON.stringify(view)).not.toContain('☕');
     }
+    expect(JSON.stringify(hostView)).not.toContain('☕');
+    expect(hostView.myVote).toBeNull();
+    expect(guestView.myVote).toBe('☕');
+  });
+
+  it('keeps the accepted vote as myVote when a re-vote is rejected', async () => {
+    await start({ rateLimitMax: 2, rateLimitWindowMs: 60_000 });
+    const client = await connect(port, { room: ROOM, name: 'Voter' });
+    await client.next('state');
+    client.send({ type: 'vote', value: '5' });
+    expect((await client.next('state')).myVote).toBe('5');
+    client.send({ type: 'vote', value: '8' });
+    expect((await client.next('state')).myVote).toBe('8');
+    client.send({ type: 'vote', value: '13' });
+    expect((await client.next('error')).message).toBe('Rate limit exceeded');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(client.messages.filter((m) => m.type === 'state')).toEqual([]);
+  });
+
+  it('clears myVote on reset', async () => {
+    const { host, guest } = await twoUsers();
+    guest.send({ type: 'vote', value: '3' });
+    await host.next('state');
+    expect((await guest.next('state')).myVote).toBe('3');
+    host.send({ type: 'reset' });
+    expect((await guest.next('state')).myVote).toBeNull();
   });
 
   it('keeps only the latest vote when a participant changes their mind', async () => {

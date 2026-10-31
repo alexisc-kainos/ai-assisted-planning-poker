@@ -33,11 +33,10 @@ function CopyLink({ url }: { url: string }) {
 }
 
 export function RoomPage({ roomId }: { roomId: string }) {
-  const { status, error, capacity, userId, state, myVote, join, vote, setTicket } = useRoom(roomId);
+  const { status, error, capacity, userId, state, join, vote, setTicket } = useRoom(roomId);
   const url = joinUrl(roomId);
 
   if (status === 'joined' && state) {
-    const me = state.users.find((user) => user.id === userId);
     return (
       <>
         {error && (
@@ -47,7 +46,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
         )}
         <CopyLink url={url} />
         <TicketPanel ticket={state.ticket} isHost={state.hostId === userId} onSetTicket={setTicket} />
-        <VoteDeck selected={me?.hasVoted ? myVote : null} disabled={state.revealed} onVote={vote} />
+        <VoteDeck selected={state.myVote} disabled={state.revealed} onVote={vote} />
         <Roster users={state.users} hostId={state.hostId} meId={userId} />
       </>
     );
