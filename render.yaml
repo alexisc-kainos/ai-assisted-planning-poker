@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: planning-poker-backend
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build -w backend
+    startCommand: npm start -w backend
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ALLOWED_ORIGINS
+        value: https://alexisc-kainos.github.io
+      - key: MAX_ROOM_USERS
+        value: "50"
