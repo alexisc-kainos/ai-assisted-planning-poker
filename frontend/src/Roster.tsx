@@ -19,7 +19,14 @@ export function Roster({ users, hostId, meId }: RosterProps) {
               {user.name}
               {user.id === meId && <span className="you"> (you)</span>}
             </span>
-            {user.id === hostId && <span className="badge">Host</span>}
+            <span className="roster-badges">
+              {user.id === hostId && <span className="badge">Host</span>}
+              {user.hasVoted ? (
+                <span className="badge voted">✓ Voted</span>
+              ) : (
+                <span className="badge waiting">Waiting</span>
+              )}
+            </span>
           </li>
         ))}
       </ul>

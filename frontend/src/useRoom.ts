@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_URL, DEFAULT_DECK, WS_URL } from './config';
 import { isCreator } from './room';
-import type { RoomState, RoomStatus, ServerMessage } from './types';
+import type { ClientMessage, RoomState, RoomStatus, ServerMessage } from './types';
 
 export type JoinStatus = 'idle' | 'checking' | 'connecting' | 'joined' | 'reconnecting' | 'full' | 'error';
 
@@ -101,6 +101,18 @@ export function useRoom(roomId: string) {
     [roomId, connect],
   );
 
+  const send = useCallback((message: ClientMessage) => {
+    const ws = socketRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
+  }, []);
+
+  const vote = useCallback((value: string) => send({ type: 'vote', value }), [send]);
+
+  const setTicket = useCallback(
+    (content: string) => send({ type: 'setTicket', ticket: { type: 'story', content } }),
+    [send],
+  );
+
   useEffect(
     () => () => {
       clearTimeout(reconnectTimer.current);
@@ -111,5 +123,5 @@ export function useRoom(roomId: string) {
     [],
   );
 
-  return { status, error, capacity, userId, state, join };
+  return { status, error, capacity, userId, state, join, vote, setTicket };
 }

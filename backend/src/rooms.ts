@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import type { Ticket } from './validation.js';
 
 export interface Member {
   id: string;
@@ -13,8 +14,10 @@ export interface StateMessage {
   hostId: string | null;
   revealed: boolean;
   deck?: string;
+  ticket: Ticket | null;
   users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean }>;
   votes: Record<string, string> | null;
+  myVote: string | null;
 }
 
 export class Room {
@@ -22,6 +25,7 @@ export class Room {
   private nextSeq = 1;
   hostId: string | null = null;
   revealed = false;
+  ticket: Ticket | null = null;
 
   constructor(
     readonly id: string,
@@ -78,12 +82,19 @@ export class Room {
     return null;
   }
 
-  snapshot(): StateMessage {
+  setTicket(userId: string, ticket: Ticket): string | null {
+    if (userId !== this.hostId) return 'Only the host can set the ticket';
+    this.ticket = ticket;
+    return null;
+  }
+
+  snapshot(forUserId: string): StateMessage {
     const members = [...this.members.values()].sort((a, b) => a.seq - b.seq);
     const state: StateMessage = {
       type: 'state',
       hostId: this.hostId,
       revealed: this.revealed,
+      ticket: this.ticket,
       users: members.map(({ id, name, avatar, vote }) => ({
         id,
         name,
@@ -95,6 +106,7 @@ export class Room {
             members.filter((m) => m.vote !== undefined).map((m) => [m.id, m.vote as string]),
           )
         : null,
+      myVote: this.members.get(forUserId)?.vote ?? null,
     };
     if (this.deck) state.deck = this.deck;
     return state;

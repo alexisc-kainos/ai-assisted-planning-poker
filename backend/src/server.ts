@@ -50,9 +50,8 @@ export function createAppServer(config: Config): AppServer {
   };
 
   const broadcast = (room: Room) => {
-    const payload = JSON.stringify(room.snapshot());
-    for (const ws of roomSockets.get(room.id)?.values() ?? []) {
-      if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+    for (const [userId, ws] of roomSockets.get(room.id) ?? []) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(room.snapshot(userId)));
     }
   };
 
@@ -76,12 +75,21 @@ export function createAppServer(config: Config): AppServer {
       if (!parsed.ok) return send(ws, { type: 'error', message: parsed.error });
 
       const { message } = parsed;
-      const error =
-        message.type === 'vote'
-          ? conn.room.vote(conn.userId, message.value)
-          : message.type === 'reveal'
-            ? conn.room.reveal(conn.userId)
-            : conn.room.reset(conn.userId);
+      let error: string | null;
+      switch (message.type) {
+        case 'vote':
+          error = conn.room.vote(conn.userId, message.value);
+          break;
+        case 'reveal':
+          error = conn.room.reveal(conn.userId);
+          break;
+        case 'reset':
+          error = conn.room.reset(conn.userId);
+          break;
+        case 'setTicket':
+          error = conn.room.setTicket(conn.userId, message.ticket);
+          break;
+      }
 
       if (error) send(ws, { type: 'error', message: error });
       else broadcast(conn.room);

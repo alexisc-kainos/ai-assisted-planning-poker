@@ -84,6 +84,30 @@ describe('parseClientMessage', () => {
   it.each(['reveal', 'reset'])('accepts %s', (type) => {
     expect(parseClientMessage(JSON.stringify({ type }))).toEqual({ ok: true, message: { type } });
   });
+
+  const setTicket = (ticket: unknown) => JSON.stringify({ type: 'setTicket', ticket });
+
+  it.each([
+    ['missing ticket', '{"type":"setTicket"}'],
+    ['null ticket', setTicket(null)],
+    ['array ticket', setTicket([])],
+    ['spike type', setTicket({ type: 'spike', content: 'Login' })],
+    ['missing type', setTicket({ content: 'Login' })],
+    ['numeric content', setTicket({ type: 'story', content: 5 })],
+    ['blank content', setTicket({ type: 'story', content: ' \n ' })],
+    ['501 chars', setTicket({ type: 'story', content: 'x'.repeat(501) })],
+  ])('rejects setTicket with %s', (_label, raw) => {
+    expect(parseClientMessage(raw)).toEqual({ ok: false, error: 'Invalid setTicket message' });
+  });
+
+  it('accepts setTicket, trimming content and counting emoji as one char', () => {
+    expect(parseClientMessage(setTicket({ type: 'story', content: '  Login\npage  ' }))).toEqual({
+      ok: true,
+      message: { type: 'setTicket', ticket: { type: 'story', content: 'Login\npage' } },
+    });
+    const emoji = '🐧'.repeat(500);
+    expect(parseClientMessage(setTicket({ type: 'story', content: emoji }))).toMatchObject({ ok: true });
+  });
 });
 
 describe('loadConfig', () => {

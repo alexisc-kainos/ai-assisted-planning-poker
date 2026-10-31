@@ -6,12 +6,19 @@ import { markCreator } from '../room';
 import { MAX_RECONNECT_ATTEMPTS, reconnectDelay } from '../useRoom';
 
 class FakeWebSocket {
+  static readonly OPEN = 1;
   static instances: FakeWebSocket[] = [];
+  readyState = FakeWebSocket.OPEN;
+  sent: unknown[] = [];
   onmessage: ((event: { data: string }) => void) | null = null;
   onclose: ((event: { code: number }) => void) | null = null;
 
   constructor(readonly url: string) {
     FakeWebSocket.instances.push(this);
+  }
+
+  send(data: string) {
+    this.sent.push(JSON.parse(data));
   }
 
   close() {}
@@ -122,6 +129,82 @@ describe('RoomPage', () => {
     await fillAndJoin();
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't reach the server. Please try again.");
+  });
+
+  describe('voting on a story ticket', () => {
+    const roomState = (myVote: string | null, hostId = 'user-a') => ({
+      type: 'state',
+      hostId,
+      revealed: false,
+      ticket: { type: 'story', content: 'Login page' },
+      users: [
+        { id: 'user-a', name: 'Alice', avatar: 'cat', hasVoted: false },
+        { id: 'user-b', name: 'Bob', avatar: 'penguin', hasVoted: myVote !== null },
+      ],
+      votes: null,
+      myVote,
+    });
+
+    async function joinAs(userId: string, hostId = 'user-a') {
+      mockRoomStatus({ exists: true, userCount: 1, capacity: 50, full: false });
+      render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin('Bob', 'Penguin');
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      const ws = FakeWebSocket.instances[0];
+      ws.emit({ type: 'welcome', userId });
+      ws.emit(roomState(null, hostId));
+      return ws;
+    }
+
+    const pressed = (name: string) => screen.getByRole('button', { name }).getAttribute('aria-pressed');
+
+    it('sends my vote, highlights the vote the server holds, and lets me change it', async () => {
+      const ws = await joinAs('user-b');
+      const user = userEvent.setup();
+      expect(screen.getByText('Login page')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '5' }));
+      expect(ws.sent).toEqual([{ type: 'vote', value: '5' }]);
+      ws.emit(roomState('5'));
+      expect(pressed('5')).toBe('true');
+
+      await user.click(screen.getByRole('button', { name: '13' }));
+      expect(ws.sent.at(-1)).toEqual({ type: 'vote', value: '13' });
+      ws.emit(roomState('13'));
+      expect(pressed('13')).toBe('true');
+      expect(pressed('5')).toBe('false');
+    });
+
+    it('keeps the accepted vote highlighted when a re-vote is rejected', async () => {
+      const ws = await joinAs('user-b');
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: '5' }));
+      ws.emit(roomState('5'));
+
+      await user.click(screen.getByRole('button', { name: '13' }));
+      ws.emit({ type: 'error', message: 'Rate limit exceeded' });
+      expect(pressed('5')).toBe('true');
+      expect(pressed('13')).toBe('false');
+      expect(screen.getByRole('alert')).toHaveTextContent('Rate limit exceeded');
+    });
+
+    it('clears my highlighted card when the server says I have no vote', async () => {
+      const ws = await joinAs('user-b');
+      await userEvent.setup().click(screen.getByRole('button', { name: '8' }));
+      ws.emit(roomState('8'));
+      ws.emit(roomState(null));
+      expect(pressed('8')).toBe('false');
+    });
+
+    it('lets the host set the ticket', async () => {
+      const ws = await joinAs('user-b', 'user-b');
+      const user = userEvent.setup();
+      const textarea = screen.getByLabelText('What are we estimating?');
+      await user.clear(textarea);
+      await user.type(textarea, 'Logout');
+      await user.click(screen.getByRole('button', { name: 'Update ticket' }));
+      expect(ws.sent).toEqual([{ type: 'setTicket', ticket: { type: 'story', content: 'Logout' } }]);
+    });
   });
 
   describe('after a server_shutdown close', () => {
