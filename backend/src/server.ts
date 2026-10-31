@@ -29,6 +29,14 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+function parseRequestUrl(req: IncomingMessage): URL | null {
+  try {
+    return new URL(req.url ?? '/', 'http://localhost');
+  } catch {
+    return null;
+  }
+}
+
 export function createAppServer(config: Config): AppServer {
   const rooms = new Map<string, Room>();
   const roomSockets = new Map<string, Map<string, WebSocket>>();
@@ -167,7 +175,9 @@ export function createAppServer(config: Config): AppServer {
   };
 
   const server = createServer((req, res) => {
-    const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+    const url = parseRequestUrl(req);
+    if (!url) return sendJson(res, 400, { error: 'Bad request' });
+    const { pathname } = url;
     if (pathname === '/health' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('ok');
@@ -180,7 +190,8 @@ export function createAppServer(config: Config): AppServer {
 
   server.on('upgrade', (req, socket, head) => {
     if (shuttingDown) return rejectUpgrade(socket, 503, 'Service Unavailable');
-    const url = new URL(req.url ?? '/', 'http://localhost');
+    const url = parseRequestUrl(req);
+    if (!url) return rejectUpgrade(socket, 400, 'Bad Request');
     if (url.pathname !== '/ws') return rejectUpgrade(socket, 404, 'Not Found');
 
     const params = parseConnectParams(url.searchParams);

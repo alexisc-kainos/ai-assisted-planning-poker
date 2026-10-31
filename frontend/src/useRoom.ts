@@ -5,7 +5,13 @@ import type { RoomState, RoomStatus, ServerMessage } from './types';
 
 export type JoinStatus = 'idle' | 'checking' | 'connecting' | 'joined' | 'reconnecting' | 'full' | 'error';
 
-const RECONNECT_DELAY_MS = 2_000;
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+// 2+4+8+16+30+30s covers a Render free-tier cold start.
+export const MAX_RECONNECT_ATTEMPTS = 6;
+
+export const reconnectDelay = (attempt: number) =>
+  Math.min(RECONNECT_BASE_DELAY_MS * 2 ** attempt, RECONNECT_MAX_DELAY_MS);
 
 export async function fetchRoomStatus(roomId: string): Promise<RoomStatus> {
   const res = await fetch(`${API_URL}/rooms/${encodeURIComponent(roomId)}`);
@@ -23,7 +29,7 @@ export function useRoom(roomId: string) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const connect = useCallback(
-    (name: string, avatar: string) => {
+    (name: string, avatar: string, reconnectAttempt: number | null = null) => {
       const params = new URLSearchParams({ room: roomId, name, avatar });
       if (isCreator(roomId)) params.set('deck', DEFAULT_DECK);
 
@@ -48,18 +54,25 @@ export function useRoom(roomId: string) {
       ws.onclose = (event) => {
         if (socketRef.current !== ws) return;
         socketRef.current = null;
-        if (!welcomed) {
+        setState(null);
+        setUserId(null);
+
+        const retry = (attempt: number) => {
+          setStatus('reconnecting');
+          reconnectTimer.current = setTimeout(() => connect(name, avatar, attempt), reconnectDelay(attempt));
+        };
+
+        if (welcomed && event.code === 1001) {
+          retry(0);
+        } else if (!welcomed && reconnectAttempt !== null && reconnectAttempt + 1 < MAX_RECONNECT_ATTEMPTS) {
+          retry(reconnectAttempt + 1);
+        } else if (!welcomed) {
           setStatus('error');
           setError("Couldn't join — the room may be full or unavailable. Please try again.");
-        } else if (event.code === 1001) {
-          setStatus('reconnecting');
-          reconnectTimer.current = setTimeout(() => connect(name, avatar), RECONNECT_DELAY_MS);
         } else {
           setStatus('error');
           setError('You were disconnected from the room. Join again to continue.');
         }
-        setState(null);
-        setUserId(null);
       };
     },
     [roomId],

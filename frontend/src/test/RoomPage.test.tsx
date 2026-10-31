@@ -1,8 +1,9 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomPage } from '../RoomPage';
 import { markCreator } from '../room';
+import { MAX_RECONNECT_ATTEMPTS, reconnectDelay } from '../useRoom';
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
@@ -121,5 +122,69 @@ describe('RoomPage', () => {
     await fillAndJoin();
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't reach the server. Please try again.");
+  });
+
+  describe('after a server_shutdown close', () => {
+    const state = {
+      type: 'state',
+      hostId: 'user-a',
+      revealed: false,
+      users: [{ id: 'user-a', name: 'Alice', avatar: 'capybara', hasVoted: false }],
+      votes: null,
+    };
+
+    async function joinThenShutdown() {
+      mockRoomStatus({ exists: false, userCount: 0, capacity: 50, full: false });
+      const view = render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin();
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      FakeWebSocket.instances[0].emit({ type: 'welcome', userId: 'user-a' });
+      FakeWebSocket.instances[0].emit(state);
+      vi.useFakeTimers();
+      FakeWebSocket.instances[0].serverClose(1001);
+      return view;
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const advance = (ms: number) => act(() => vi.advanceTimersByTime(ms));
+
+    it('keeps retrying with backoff until the server is back', async () => {
+      await joinThenShutdown();
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
+
+      advance(reconnectDelay(0));
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      FakeWebSocket.instances[1].serverClose(1006);
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
+
+      advance(reconnectDelay(1) - 1);
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      advance(1);
+      expect(FakeWebSocket.instances).toHaveLength(3);
+
+      FakeWebSocket.instances[2].emit({ type: 'welcome', userId: 'user-a2' });
+      FakeWebSocket.instances[2].emit({ ...state, hostId: 'user-a2', users: [{ ...state.users[0], id: 'user-a2' }] });
+      expect(screen.getByRole('listitem')).toHaveTextContent('Alice (you)Host');
+    });
+
+    it('gives up after the maximum number of attempts', async () => {
+      await joinThenShutdown();
+      for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+        advance(reconnectDelay(attempt));
+        FakeWebSocket.instances.at(-1)!.serverClose(1006);
+      }
+      expect(FakeWebSocket.instances).toHaveLength(1 + MAX_RECONNECT_ATTEMPTS);
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't join — the room may be full or unavailable.");
+    });
+
+    it('cancels pending retries on unmount', async () => {
+      const { unmount } = await joinThenShutdown();
+      unmount();
+      advance(60_000);
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    });
   });
 });

@@ -1,4 +1,5 @@
 import { once } from 'node:events';
+import { connect as connectTcp } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Config } from '../src/config.js';
 import type { AppServer } from '../src/server.js';
@@ -208,6 +209,24 @@ describe('HTTP routes', () => {
   it('returns 404 for unknown routes', async () => {
     await start();
     expect((await fetch(`http://127.0.0.1:${port}/nope`)).status).toBe(404);
+  });
+
+  it.each([
+    ['HTTP request', 'GET //[ HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n'],
+    [
+      'WebSocket upgrade',
+      'GET //[ HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n' +
+        'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n',
+    ],
+  ])('answers a malformed URL in an %s with 400 and stays up', async (_label, raw) => {
+    await start();
+    const socket = connectTcp(port, '127.0.0.1');
+    socket.end(raw);
+    let response = '';
+    socket.on('data', (chunk) => (response += chunk));
+    await once(socket, 'close');
+    expect(response).toMatch(/^HTTP\/1\.1 400/);
+    expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200);
   });
 });
 
