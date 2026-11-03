@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concept B · Card Club · PPK-34</title>
+<style>
+.page { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: #e7e5e1; color: #26252d; margin: 0; }
+.page-head { max-width: 1440px; margin: 0 auto; padding: 2.5rem 2rem 1rem; }
+.page-head a { color: #2b4f80; font-weight: 600; }
+.page-head a:focus-visible { outline: 3px solid #2b4f80; outline-offset: 3px; }
+.page-head h1 { margin: .75rem 0 .25rem; font-size: 2rem; }
+.page-head p { max-width: 80ch; line-height: 1.55; margin: .35rem 0; }
+.screen { padding: 2rem; }
+.screen > h2 { max-width: 1440px; margin: 0 auto .25rem; font-size: 1.5rem; }
+.screen > .state-note { max-width: 1440px; margin: 0 auto 1.25rem; color: #4a4955; }
+.frames { display: flex; flex-direction: column; gap: 2rem; align-items: flex-start; width: max-content; margin: 0 auto; }
+figure { margin: 0; }
+figcaption { font: 600 .85rem/1.4 ui-monospace, Menlo, monospace; color: #4a4955; margin-bottom: .5rem; }
+.frame { container: frame / inline-size; overflow: hidden; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,.18); }
+.frame.desktop { width: 1440px; min-height: 900px; }
+.frame.mobile { width: 390px; min-height: 844px; border-radius: 28px; }
+.frame * { box-sizing: border-box; }
+.frame button, .frame input, .frame textarea { font: inherit; }
+.frame ul, .frame ol { list-style: none; margin: 0; padding: 0; }
+.frame h3, .frame h4, .frame p { margin: 0; }
+.frame fieldset { border: 0; padding: 0; margin: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.cb { --felt:#1f4d3a; --felt-dark:#173b2c; --cream:#f5ecd7; --ink:#1d1d1b; --brass:#d9a441; --wood:#7a4a26; --red:#a33a24; --felt-muted:#d4e4d8;
+  --slab: Rockwell, 'Roboto Slab', 'Courier New', Georgia, serif;
+  --st:#1d1d1b; --sw:3; --fe:#1d1d1b; --fl:#1d1d1b;
+  background: radial-gradient(ellipse at 50% 30%, #25583f, var(--felt) 55%, var(--felt-dark)); color: var(--cream);
+  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif; min-height: inherit; font-size: 16px; line-height: 1.45; }
+.cb .top { display:flex; justify-content:space-between; align-items:center; padding: 18px 40px; background: var(--ink); border-bottom: 4px solid var(--brass); }
+.cb .brand { font: 700 28px/1 var(--slab); letter-spacing: .02em; }
+.cb .suit { color: var(--brass); }
+.cb .room { font-family: var(--slab); }
+.cb code { white-space: nowrap; font: 700 16px ui-monospace, Menlo, monospace; background: var(--brass); color: var(--ink); padding: 4px 10px; border-radius: 4px; margin-left: 6px; }
+.cb .layout { display:grid; grid-template-columns: 330px 1fr 330px; gap: 32px; padding: 32px 40px; }
+.cb .col { display:flex; flex-direction:column; gap: 24px; }
+.cb h3 { font: 700 20px/1.2 var(--slab); margin-bottom: 12px; letter-spacing: .02em; }
+.cb h4 { font: 700 15px var(--slab); margin-bottom: 8px; }
+.cb .ava { width: 44px; height: 44px; flex: none; filter: drop-shadow(0 2px 0 rgba(0,0,0,.35)); }
+.cb button { min-height: 44px; padding: 8px 16px; border-radius: 8px; border: 2px solid var(--ink); background: var(--cream); color: var(--ink); font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 3px 0 var(--ink); }
+.cb button.primary { background: var(--brass); }
+.cb button:focus-visible, .cb input:focus-visible, .cb textarea:focus-visible { outline: 3px solid var(--ink); outline-offset: 0; box-shadow: 0 0 0 6px #ffd36b; }
+.cb input[type=text], .cb textarea { width: 100%; border: 2px solid var(--ink); border-radius: 8px; padding: 10px 12px; background: #fffaf0; color: var(--ink); }
+.cb label { font-weight: 700; }
+.cb .badges { display:flex; gap: 6px; flex-wrap: wrap; }
+.cb .badge { font-size: 13px; font-weight: 700; padding: 2px 9px; border-radius: 4px; border: 1.5px solid var(--ink); background: #e9dcb8; color: var(--ink); }
+.cb .badge.host { background: var(--ink); color: #fff; border-color: var(--brass); }
+.cb .badge.voted { background: #9fd4ae; color: #10331f; }
+.cb .badge.waiting { background: #f2c46d; color: #4a2c00; }
+.cb .badge.spectating, .cb .badge.revealed { background: #cfc6f2; color: #2c2550; }
+.cb .badge.type-spike { background: #f2c46d; color: #4a2c00; }
+.cb .hint { color: var(--felt-muted); font-style: italic; }
+
+/* rail: tickets as index cards */
+.cb .tickets h3, .cb .add h3 { color: var(--cream); }
+.cb .ticket-list { display:flex; flex-direction:column; gap: 14px; }
+.cb .ticket-list li { background: var(--cream); color: var(--ink); border-radius: 6px; padding: 18px 16px 14px; display:grid; gap: 8px; box-shadow: 0 4px 0 rgba(0,0,0,.35); background-image: linear-gradient(var(--red), var(--red)); background-size: 100% 3px; background-position: 0 10px; background-repeat: no-repeat; }
+.cb .ticket-list li:nth-child(odd) { transform: rotate(-.8deg); }
+.cb .ticket-list li:nth-child(even) { transform: rotate(.6deg); }
+.cb .ticket-list li.active { outline: 4px solid var(--brass); transform: none; }
+.cb .actions { display:flex; gap: 8px; flex-wrap: wrap; }
+.cb .add { background: var(--cream); color: var(--ink); border-radius: 8px; padding: 16px; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+.cb .add h3 { color: var(--ink); }
+.cb .add-form { display:grid; gap: 10px; }
+.cb fieldset { display:flex; gap: 16px; align-items:center; flex-wrap: wrap; }
+.cb legend { font-weight: 700; float:left; margin-right: 6px; }
+.cb .radio { display:flex; align-items:center; gap: 6px; min-height: 44px; font-weight: 400; }
+.cb .radio input { width: 20px; height: 20px; accent-color: var(--felt); }
+.cb .add-form .primary { justify-self:start; }
+
+/* centre: the table */
+.cb .table-wrap h3 { text-align:center; }
+.cb .table { position: relative; height: 470px; margin: 30px 20px 50px; border-radius: 235px; background: radial-gradient(ellipse at 50% 40%, #2d6b4f, #1f4d3a 70%); border: 16px solid var(--wood); box-shadow: inset 0 0 0 4px var(--brass), inset 0 10px 30px rgba(0,0,0,.35), 0 12px 0 rgba(0,0,0,.25); }
+.cb .felt-center { position:absolute; inset: 0; display:flex; align-items:center; justify-content:center; padding: 0 170px; text-align:center; }
+.cb .felt-center .hint { font-size: 18px; color: var(--cream); }
+.cb .center-card { background: var(--cream); color: var(--ink); padding: 20px 24px; border-radius: 10px; border: 2px solid var(--ink); box-shadow: 0 6px 0 rgba(0,0,0,.35); max-width: 380px; display:grid; gap: 8px; justify-items:center; }
+.cb .now { font: 600 19px/1.35 var(--slab); }
+.cb .seats { position:absolute; inset: 0; }
+.cb .seat { position:absolute; display:flex; align-items:center; gap: 10px; background: var(--ink); color: var(--cream); padding: 8px 14px 8px 8px; border-radius: 999px; border: 2px solid var(--brass); }
+.cb .seat .pin { width: 52px; height: 52px; border-radius: 50%; background: var(--cream); display:grid; place-items:center; border: 2px solid var(--brass); }
+.cb .seat-info { display:grid; gap: 4px; }
+.cb .person-name { font-weight: 700; }
+.cb .you { font-weight: 400; color: var(--felt-muted); }
+.cb .seat-priya { left: 50%; bottom: -36px; transform: translateX(-50%); }
+.cb .seat-tom { left: 6%; top: -30px; }
+.cb .seat-aisha { right: 6%; top: -30px; }
+.cb .seat-ben { right: -40px; top: 50%; transform: translateY(-50%); }
+.cb .seat-card { width: 34px; height: 48px; border-radius: 5px; border: 2px solid var(--ink); display:grid; place-items:center; font: 700 20px var(--slab); }
+.cb .seat-card.back { background: repeating-linear-gradient(45deg, #b8402a 0 5px, #8f2f1d 5px 10px); border-color: var(--cream); }
+.cb .seat-card.empty { border: 2px dashed var(--felt-muted); }
+.cb .seat-card.up { background: var(--cream); color: var(--ink); }
+
+/* hand of cards */
+.cb .hand h3 { text-align:center; }
+.cb .hand .deck-cards { display:flex; justify-content:center; padding-top: 28px; }
+.cb .vcard { position: relative; width: 62px; height: 92px; margin: 0 9px; border-radius: 8px; background: #fffaf0; padding: 0; box-shadow: 0 4px 0 rgba(0,0,0,.4); display:grid; place-items:center; }
+.cb .vcard:nth-child(1) { transform: rotate(-6deg) translateY(14px); }
+.cb .vcard:nth-child(2) { transform: rotate(-4.5deg) translateY(7px); }
+.cb .vcard:nth-child(3) { transform: rotate(-3deg) translateY(2px); }
+.cb .vcard:nth-child(5) { transform: rotate(1.5deg) translateY(1px); }
+.cb .vcard:nth-child(6) { transform: rotate(3deg) translateY(4px); }
+.cb .vcard:nth-child(7) { transform: rotate(4.5deg) translateY(9px); }
+.cb .vcard:nth-child(8) { transform: rotate(6deg) translateY(16px); }
+.cb .vcard.selected { transform: translateY(-26px); background: var(--brass); z-index: 1; box-shadow: 0 10px 0 rgba(0,0,0,.35); }
+.cb .vcard-value { font: 700 28px/1 var(--slab); }
+.cb .corner { position:absolute; top: 4px; left: 6px; font: 700 12px var(--slab); }
+.cb .corner.br { top:auto; left:auto; bottom: 4px; right: 6px; transform: rotate(180deg); }
+
+/* results as chip stacks */
+.cb .results { background: var(--ink); border: 3px solid var(--brass); border-radius: 14px; padding: 20px 24px; }
+.cb .results-layout { display:grid; grid-template-columns: 1.3fr 1fr; gap: 32px; }
+.cb .bar-row { display:grid; grid-template-columns: 48px 1fr 24px; align-items:center; gap: 12px; padding: 6px 0; }
+.cb .bar-value { width: 40px; height: 54px; border-radius: 6px; background: var(--cream); color: var(--ink); border: 2px solid var(--brass); display:grid; place-items:center; font: 700 22px var(--slab); }
+.cb .bar-track { height: 26px; background: #2b2b28; border: 2px solid #8a8a80; border-radius: 13px; overflow:hidden; }
+.cb .bar { display:block; height: 100%; background: repeating-linear-gradient(90deg, var(--brass) 0 22px, #b8862e 22px 26px); }
+.cb .most { grid-column: 2 / 4; color: var(--brass); font: 700 14px var(--slab); text-transform: uppercase; letter-spacing: .08em; }
+.cb .participant-votes li { display:flex; justify-content:space-between; padding: 8px 0; border-bottom: 1px dashed #8a8a80; }
+.cb .participant-votes strong { font: 700 20px var(--slab); color: var(--brass); }
+
+/* tray */
+.cb .mascot { width: 100%; height: auto; display:block; }
+.cb .controls, .cb .share, .cb .spectate, .cb .picker { background: rgba(0,0,0,.28); border: 2px solid rgba(217,164,65,.7); border-radius: 12px; padding: 16px; }
+.cb .controls .actions button { flex: 1; }
+.cb .share label { display:block; margin-bottom: 8px; }
+.cb .share-row { display:grid; gap: 8px; }
+.cb .share-row input { font-size: 14px; }
+.cb .share-row button { justify-self:start; }
+.cb .switch { display:flex; align-items:center; gap: 12px; min-height: 44px; }
+.cb .switch input { width: 22px; height: 22px; accent-color: var(--brass); }
+.cb .track { display:none; }
+.cb .picker-grid { display:grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.cb .picker-grid li { display:flex; flex-direction:column; align-items:center; gap: 4px; font-size: 13px; font-weight: 700; }
+.cb .picker-grid .ava { width: 52px; height: 52px; background: var(--cream); border-radius: 50%; padding: 4px; border: 2px solid var(--brass); }
+
+@container frame (max-width: 600px) {
+  .cb .top { padding: 14px 18px; }
+  .cb .brand { font-size: 21px; }
+  .cb .layout { display:flex; flex-direction:column; gap: 22px; padding: 18px; }
+  .cb .col { display: contents; }
+  .cb .table-wrap { order: 1; }
+  .cb .results { order: 2; padding: 16px; }
+  .cb .hand { order: 3; }
+  .cb .controls { order: 4; }
+  .cb .share { order: 5; }
+  .cb .spectate { order: 6; }
+  .cb .tickets { order: 7; }
+  .cb .add { order: 8; }
+  .cb .picker { order: 9; }
+  .cb .mascot { order: 10; width: 55%; align-self:center; }
+  .cb .table { height: auto; margin: 0; border-radius: 28px; border-width: 10px; padding: 16px 12px; display:flex; flex-direction:column; gap: 14px; }
+  .cb .felt-center, .cb .seats { position: static; padding: 0; }
+  .cb .seats { display:grid; grid-template-columns: 1fr; gap: 8px; }
+  .cb .seat { position: static; transform:none; border-radius: 14px; }
+  .cb .seat .seat-card { margin-left: auto; }
+  .cb .hand .deck-cards { display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding-top: 8px; }
+  .cb .vcard, .cb .vcard:nth-child(n) { width: 100%; height: 96px; margin: 0; transform: none; }
+  .cb .vcard.selected { transform: translateY(-8px); }
+  .cb .vcard-value { font-size: 28px; }
+  .cb .results-layout { grid-template-columns: 1fr; gap: 16px; }
+  .cb .ticket-list li:nth-child(n) { transform: none; }
+}
+
+</style>
+</head>
+<body class="page">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+<symbol id="capybara" viewBox="0 0 64 64">
+  <circle cx="19" cy="17" r="5" style="fill:var(--fd,#a8774f);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><circle cx="45" cy="17" r="5" style="fill:var(--fd,#a8774f);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <rect x="12" y="16" width="40" height="40" rx="17" style="fill:var(--fb,#c4915f);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <rect x="20" y="36" width="24" height="15" rx="7" style="fill:var(--fd,#a8774f);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="27" cy="41" r="1.6" style="fill:var(--fe,#26252d)"/><circle cx="37" cy="41" r="1.6" style="fill:var(--fe,#26252d)"/>
+  <circle cx="23" cy="29" r="2.5" style="fill:var(--fe,#26252d)"/><circle cx="41" cy="29" r="2.5" style="fill:var(--fe,#26252d)"/>
+</symbol>
+<symbol id="stork" viewBox="0 0 64 64">
+  <path d="M12 60 Q30 40 50 60Z" style="fill:var(--fd,#2b2b33);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="30" cy="30" r="16" style="fill:var(--fb,#ffffff);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <path d="M43 27 L62 38 L43 34Z" style="fill:var(--fa,#e8643c);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="35" cy="26" r="2.5" style="fill:var(--fe,#26252d)"/>
+  <path d="M18 18 Q22 12 28 14" style="fill:none;stroke:var(--fl,#26252d);stroke-width:1.6;stroke-linecap:round"/>
+</symbol>
+<symbol id="penguin" viewBox="0 0 64 64">
+  <ellipse cx="32" cy="34" rx="21" ry="23" style="fill:var(--fd,#2f3446);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <path d="M18 38 Q18 22 32 27 Q46 22 46 38 Q46 52 32 53 Q18 52 18 38Z" style="fill:var(--fm,#ffffff);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="26" cy="35" r="2.4" style="fill:var(--fe,#26252d)"/><circle cx="38" cy="35" r="2.4" style="fill:var(--fe,#26252d)"/>
+  <path d="M28 41 L36 41 L32 46Z" style="fill:var(--fa,#f2a33a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+</symbol>
+<symbol id="cat" viewBox="0 0 64 64">
+  <path d="M13 28 L17 8 L30 20Z" style="fill:var(--fb,#9aa0ad);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><path d="M51 28 L47 8 L34 20Z" style="fill:var(--fb,#9aa0ad);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="32" cy="36" r="19" style="fill:var(--fb,#9aa0ad);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <path d="M18 22 L19 14 L25 20Z" style="fill:var(--fa,#f2b8c6);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><path d="M46 22 L45 14 L39 20Z" style="fill:var(--fa,#f2b8c6);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="25" cy="34" r="2.4" style="fill:var(--fe,#26252d)"/><circle cx="39" cy="34" r="2.4" style="fill:var(--fe,#26252d)"/>
+  <path d="M29.5 40 L34.5 40 L32 43Z" style="fill:var(--fa,#e88a9a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <path d="M10 41 L22 42 M10 46 L22 45 M54 41 L42 42 M54 46 L42 45" style="fill:none;stroke:var(--fl,#26252d);stroke-width:1.2;stroke-linecap:round"/>
+</symbol>
+<symbol id="dog" viewBox="0 0 64 64">
+  <ellipse cx="13" cy="30" rx="7" ry="14" transform="rotate(15 13 30)" style="fill:var(--fd,#8a6142);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <ellipse cx="51" cy="30" rx="7" ry="14" transform="rotate(-15 51 30)" style="fill:var(--fd,#8a6142);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="32" cy="34" r="19" style="fill:var(--fb,#d9b88f);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <ellipse cx="32" cy="43" rx="10" ry="8" style="fill:var(--fm,#f3e3cc);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="25" cy="31" r="2.4" style="fill:var(--fe,#26252d)"/><circle cx="39" cy="31" r="2.4" style="fill:var(--fe,#26252d)"/>
+  <ellipse cx="32" cy="39.5" rx="3.6" ry="2.6" style="fill:var(--fe,#26252d)"/>
+</symbol>
+<symbol id="fox" viewBox="0 0 64 64">
+  <path d="M11 26 L14 6 L27 18Z" style="fill:var(--fb,#e07a3a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><path d="M53 26 L50 6 L37 18Z" style="fill:var(--fb,#e07a3a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <path d="M8 24 Q32 10 56 24 L32 56Z" style="fill:var(--fb,#e07a3a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <path d="M10 26 L32 56 L24 34Z" style="fill:var(--fm,#fff4ea);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><path d="M54 26 L32 56 L40 34Z" style="fill:var(--fm,#fff4ea);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="24" cy="29" r="2.4" style="fill:var(--fe,#26252d)"/><circle cx="40" cy="29" r="2.4" style="fill:var(--fe,#26252d)"/>
+  <circle cx="32" cy="51" r="2.6" style="fill:var(--fe,#26252d)"/>
+</symbol>
+<symbol id="frog" viewBox="0 0 64 64">
+  <circle cx="20" cy="22" r="9" style="fill:var(--fb,#6fb35a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><circle cx="44" cy="22" r="9" style="fill:var(--fb,#6fb35a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <ellipse cx="32" cy="40" rx="25" ry="17" style="fill:var(--fb,#6fb35a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="20" cy="22" r="5" style="fill:var(--fm,#ffffff);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><circle cx="44" cy="22" r="5" style="fill:var(--fm,#ffffff);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="20" cy="22" r="2.4" style="fill:var(--fe,#26252d)"/><circle cx="44" cy="22" r="2.4" style="fill:var(--fe,#26252d)"/>
+  <path d="M22 44 Q32 51 42 44" style="fill:none;stroke:var(--fl,#26252d);stroke-width:2;stroke-linecap:round"/>
+</symbol>
+<symbol id="bunny" viewBox="0 0 64 64">
+  <ellipse cx="23" cy="16" rx="6" ry="15" style="fill:var(--fb,#ece7df);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><ellipse cx="41" cy="16" rx="6" ry="15" style="fill:var(--fb,#ece7df);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <ellipse cx="23" cy="17" rx="2.6" ry="10" style="fill:var(--fa,#f2b8c6);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/><ellipse cx="41" cy="17" rx="2.6" ry="10" style="fill:var(--fa,#f2b8c6);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="32" cy="40" r="18" style="fill:var(--fb,#ece7df);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+  <circle cx="25" cy="38" r="2.4" style="fill:var(--fe,#26252d)"/><circle cx="39" cy="38" r="2.4" style="fill:var(--fe,#26252d)"/>
+  <path d="M29.5 44 L34.5 44 L32 47Z" style="fill:var(--fa,#e88a9a);stroke:var(--st,none);stroke-width:var(--sw,0);stroke-linejoin:round"/>
+</symbol>
+</defs></svg>
+<header class="page-head">
+  <a href="index.html">← All concepts</a>
+  <h1>Concept B · Card Club</h1>
+  <p>A bold, tactile take on the card game. Everyone sits around a green felt poker table. The active ticket is dealt into the middle and your vote cards fan out like a hand of playing cards, with the one you pick raised. Tickets are a stack of index cards in a side rail, and the host controls sit in a "dealer tray" with a stork dealer in a visor and bow tie. Revealed cards flip face up at each seat, and the results look like stacks of chips.</p>
+  <p>The animals are flat sticker-style illustrations with thick outlines, like enamel pins. The type uses a slab serif, and the colours are cream card stock with brass and tomato red.</p>
+</header>
+<main>
+
+<section class="screen" aria-labelledby="screen-lobby">
+  <h2 id="screen-lobby">1. Session lobby</h2>
+  <p class="state-note">Priya (host) has just created the room. All four people have joined, three tickets have been added and none is active yet.</p>
+  <div class="frames">
+    <figure><figcaption>Desktop · 1440 × 900</figcaption><div class="frame desktop"><div class="cb">
+  <div class="top"><p class="brand"><span class="suit" aria-hidden="true">♣</span> Planning Poker</p><p class="room">Table <code>k7mq-2xpa</code></p></div>
+  <div class="layout">
+    <div class="col rail">
+<section class="panel tickets" aria-labelledby="lobby-d-tickets">
+  <h3 id="lobby-d-tickets">Tickets (3/10)</h3>
+
+  <ol class="ticket-list" aria-label="Tickets"><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">As a shopper I want to save my basket so I can finish checkout later</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">Show delivery slots on the checkout page</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-spike">Spike</span></div>
+      <p class="ticket-text">Investigate payment provider webhooks</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li></ol>
+</section>
+<section class="panel add" aria-labelledby="lobby-d-add">
+  <h3 id="lobby-d-add">Add a ticket</h3>
+  <form class="add-form">
+    <label for="lobby-d-desc">Ticket description</label>
+    <textarea id="lobby-d-desc" rows="2">Let shoppers apply two promo codes</textarea>
+    <fieldset><legend>Ticket type</legend>
+      <label class="radio"><input type="radio" name="lobby-d-type" checked> Story</label>
+      <label class="radio"><input type="radio" name="lobby-d-type"> Spike</label>
+    </fieldset>
+    <button type="button" class="primary">Add ticket</button>
+  </form>
+</section></div>
+    <div class="col centre">
+<section class="table-wrap" aria-labelledby="lobby-d-roster">
+  <h3 id="lobby-d-roster">In the room (4)</h3>
+  <div class="table">
+    <div class="felt-center"><p class="hint" role="status">No ticket is active. Choose one to start voting.</p></div>
+    <ul class="seats"><li class="seat seat-priya"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg></span><span class="seat-info"><span class="person-name">Priya<span class="you"> (you)</span></span><span class="badges"><span class="badge host">Host</span><span class="badge waiting">Waiting</span></span></span></li><li class="seat seat-tom"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg></span><span class="seat-info"><span class="person-name">Tom</span><span class="badges"><span class="badge waiting">Waiting</span></span></span></li><li class="seat seat-aisha"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg></span><span class="seat-info"><span class="person-name">Aisha</span><span class="badges"><span class="badge waiting">Waiting</span></span></span></li><li class="seat seat-ben"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg></span><span class="seat-info"><span class="person-name">Ben</span><span class="badges"><span class="badge spectating">Spectating</span></span></span></li></ul>
+  </div>
+</section></div>
+    <div class="col tray">
+<svg class="mascot" viewBox="0 0 260 220" aria-hidden="true" focusable="false">
+  <path d="M96 196 V162 M118 196 V164 l8 -10" stroke="#1d1d1b" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <use href="#stork" x="40" y="20" width="150" height="150"/>
+  <path d="M72 74 Q110 34 148 72 L162 78 Q110 64 66 82Z" fill="#2f8a5f" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M96 140 L110 148 L96 156Z M124 140 L110 148 L124 156Z" fill="#b8402a" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="110" cy="148" r="4" fill="#d9a441" stroke="#1d1d1b" stroke-width="2"/>
+  <g stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round">
+    <rect x="176" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(-14 198 135)"/>
+    <rect x="190" y="100" width="44" height="62" rx="6" fill="#f5ecd7"/>
+    <rect x="204" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(14 226 135)"/>
+  </g>
+  <text x="212" y="140" text-anchor="middle" font-family="Rockwell, 'Roboto Slab', Georgia, serif" font-weight="700" font-size="24" fill="#1d1d1b">5</text>
+  <rect x="0" y="196" width="260" height="24" rx="8" fill="#7a4a26"/><rect x="0" y="196" width="260" height="5" fill="#d9a441"/>
+</svg>
+<section class="panel share" aria-label="Share this room">
+  <label for="lobby-d-url">Invite your team with this link</label>
+  <div class="share-row"><input id="lobby-d-url" type="text" readonly value="https://alexisc-kainos.github.io/ai-assisted-planning-poker/?room=k7mq-2xpa"><button type="button">Copy link</button></div>
+</section>
+<section class="panel spectate" aria-label="Participation">
+  <label class="switch"><input type="checkbox" role="switch"><span class="track" aria-hidden="true"></span>Spectate</label>
+</section>
+<section class="panel picker" aria-labelledby="lobby-d-picker">
+  <h3 id="lobby-d-picker">Join preview · Choose your avatar</h3>
+  <ul class="picker-grid"><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg><span>Capybara</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg><span>Stork</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg><span>Penguin</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#cat"/></svg><span>Cat</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#dog"/></svg><span>Dog</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg><span>Fox</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#frog"/></svg><span>Frog</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#bunny"/></svg><span>Bunny</span></li></ul>
+</section></div>
+  </div>
+</div></div></figure>
+    <figure><figcaption>Mobile · 390 × 844</figcaption><div class="frame mobile"><div class="cb">
+  <div class="top"><p class="brand"><span class="suit" aria-hidden="true">♣</span> Planning Poker</p><p class="room">Table <code>k7mq-2xpa</code></p></div>
+  <div class="layout">
+    <div class="col rail">
+<section class="panel tickets" aria-labelledby="lobby-m-tickets">
+  <h3 id="lobby-m-tickets">Tickets (3/10)</h3>
+
+  <ol class="ticket-list" aria-label="Tickets"><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">As a shopper I want to save my basket so I can finish checkout later</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">Show delivery slots on the checkout page</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-spike">Spike</span></div>
+      <p class="ticket-text">Investigate payment provider webhooks</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li></ol>
+</section>
+<section class="panel add" aria-labelledby="lobby-m-add">
+  <h3 id="lobby-m-add">Add a ticket</h3>
+  <form class="add-form">
+    <label for="lobby-m-desc">Ticket description</label>
+    <textarea id="lobby-m-desc" rows="2">Let shoppers apply two promo codes</textarea>
+    <fieldset><legend>Ticket type</legend>
+      <label class="radio"><input type="radio" name="lobby-m-type" checked> Story</label>
+      <label class="radio"><input type="radio" name="lobby-m-type"> Spike</label>
+    </fieldset>
+    <button type="button" class="primary">Add ticket</button>
+  </form>
+</section></div>
+    <div class="col centre">
+<section class="table-wrap" aria-labelledby="lobby-m-roster">
+  <h3 id="lobby-m-roster">In the room (4)</h3>
+  <div class="table">
+    <div class="felt-center"><p class="hint" role="status">No ticket is active. Choose one to start voting.</p></div>
+    <ul class="seats"><li class="seat seat-priya"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg></span><span class="seat-info"><span class="person-name">Priya<span class="you"> (you)</span></span><span class="badges"><span class="badge host">Host</span><span class="badge waiting">Waiting</span></span></span></li><li class="seat seat-tom"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg></span><span class="seat-info"><span class="person-name">Tom</span><span class="badges"><span class="badge waiting">Waiting</span></span></span></li><li class="seat seat-aisha"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg></span><span class="seat-info"><span class="person-name">Aisha</span><span class="badges"><span class="badge waiting">Waiting</span></span></span></li><li class="seat seat-ben"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg></span><span class="seat-info"><span class="person-name">Ben</span><span class="badges"><span class="badge spectating">Spectating</span></span></span></li></ul>
+  </div>
+</section></div>
+    <div class="col tray">
+<svg class="mascot" viewBox="0 0 260 220" aria-hidden="true" focusable="false">
+  <path d="M96 196 V162 M118 196 V164 l8 -10" stroke="#1d1d1b" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <use href="#stork" x="40" y="20" width="150" height="150"/>
+  <path d="M72 74 Q110 34 148 72 L162 78 Q110 64 66 82Z" fill="#2f8a5f" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M96 140 L110 148 L96 156Z M124 140 L110 148 L124 156Z" fill="#b8402a" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="110" cy="148" r="4" fill="#d9a441" stroke="#1d1d1b" stroke-width="2"/>
+  <g stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round">
+    <rect x="176" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(-14 198 135)"/>
+    <rect x="190" y="100" width="44" height="62" rx="6" fill="#f5ecd7"/>
+    <rect x="204" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(14 226 135)"/>
+  </g>
+  <text x="212" y="140" text-anchor="middle" font-family="Rockwell, 'Roboto Slab', Georgia, serif" font-weight="700" font-size="24" fill="#1d1d1b">5</text>
+  <rect x="0" y="196" width="260" height="24" rx="8" fill="#7a4a26"/><rect x="0" y="196" width="260" height="5" fill="#d9a441"/>
+</svg>
+<section class="panel share" aria-label="Share this room">
+  <label for="lobby-m-url">Invite your team with this link</label>
+  <div class="share-row"><input id="lobby-m-url" type="text" readonly value="https://alexisc-kainos.github.io/ai-assisted-planning-poker/?room=k7mq-2xpa"><button type="button">Copy link</button></div>
+</section>
+<section class="panel spectate" aria-label="Participation">
+  <label class="switch"><input type="checkbox" role="switch"><span class="track" aria-hidden="true"></span>Spectate</label>
+</section>
+<section class="panel picker" aria-labelledby="lobby-m-picker">
+  <h3 id="lobby-m-picker">Join preview · Choose your avatar</h3>
+  <ul class="picker-grid"><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg><span>Capybara</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg><span>Stork</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg><span>Penguin</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#cat"/></svg><span>Cat</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#dog"/></svg><span>Dog</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg><span>Fox</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#frog"/></svg><span>Frog</span></li><li><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#bunny"/></svg><span>Bunny</span></li></ul>
+</section></div>
+  </div>
+</div></div></figure>
+  </div>
+</section>
+
+<section class="screen" aria-labelledby="screen-voting">
+  <h2 id="screen-voting">2. Voting</h2>
+  <p class="state-note">Ticket 1 is active. Priya has picked 5, Tom has voted, Aisha is still choosing and Ben is spectating. Nobody can see vote values yet.</p>
+  <div class="frames">
+    <figure><figcaption>Desktop · 1440 × 900</figcaption><div class="frame desktop"><div class="cb">
+  <div class="top"><p class="brand"><span class="suit" aria-hidden="true">♣</span> Planning Poker</p><p class="room">Table <code>k7mq-2xpa</code></p></div>
+  <div class="layout">
+    <div class="col rail">
+<section class="panel tickets" aria-labelledby="voting-d-tickets">
+  <h3 id="voting-d-tickets">Tickets (3/10)</h3>
+
+  <ol class="ticket-list" aria-label="Tickets"><li class="ticket active" aria-current="true">
+      <div class="badges"><span class="badge type-story">Story</span><span class="badge voted">Active</span></div>
+      <p class="ticket-text">As a shopper I want to save my basket so I can finish checkout later</p>
+      <div class="actions"><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">Show delivery slots on the checkout page</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-spike">Spike</span></div>
+      <p class="ticket-text">Investigate payment provider webhooks</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li></ol>
+</section></div>
+    <div class="col centre">
+<section class="table-wrap" aria-labelledby="voting-d-roster">
+  <h3 id="voting-d-roster">In the room (4)</h3>
+  <div class="table">
+    <div class="felt-center"><div class="center-card"><span class="badge type-story">Story</span><p class="now"><strong>Now voting:</strong> As a shopper I want to save my basket so I can finish checkout later</p></div></div>
+    <ul class="seats"><li class="seat seat-priya"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg></span><span class="seat-info"><span class="person-name">Priya<span class="you"> (you)</span></span><span class="badges"><span class="badge host">Host</span><span class="badge voted">✓ Voted</span></span></span><span class="seat-card back" aria-hidden="true"></span></li><li class="seat seat-tom"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg></span><span class="seat-info"><span class="person-name">Tom</span><span class="badges"><span class="badge voted">✓ Voted</span></span></span><span class="seat-card back" aria-hidden="true"></span></li><li class="seat seat-aisha"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg></span><span class="seat-info"><span class="person-name">Aisha</span><span class="badges"><span class="badge waiting">Waiting</span></span></span><span class="seat-card empty" aria-hidden="true"></span></li><li class="seat seat-ben"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg></span><span class="seat-info"><span class="person-name">Ben</span><span class="badges"><span class="badge spectating">Spectating</span></span></span></li></ul>
+  </div>
+</section>
+<section class="panel deck hand" aria-labelledby="voting-d-deck">
+  <h3 id="voting-d-deck">Your vote</h3>
+  <div class="deck-cards" role="group" aria-labelledby="voting-d-deck"><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">1</span><span class="vcard-value">1</span><span class="corner br" aria-hidden="true">1</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">2</span><span class="vcard-value">2</span><span class="corner br" aria-hidden="true">2</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">3</span><span class="vcard-value">3</span><span class="corner br" aria-hidden="true">3</span></button><button type="button" class="vcard selected" aria-pressed="true"><span class="corner" aria-hidden="true">5</span><span class="vcard-value">5</span><span class="corner br" aria-hidden="true">5</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">8</span><span class="vcard-value">8</span><span class="corner br" aria-hidden="true">8</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">13</span><span class="vcard-value">13</span><span class="corner br" aria-hidden="true">13</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">20</span><span class="vcard-value">20</span><span class="corner br" aria-hidden="true">20</span></button><button type="button" class="vcard" aria-pressed="false" aria-label="Coffee break"><span class="corner" aria-hidden="true">☕</span><span class="vcard-value">☕</span><span class="corner br" aria-hidden="true">☕</span></button></div>
+</section></div>
+    <div class="col tray">
+<svg class="mascot" viewBox="0 0 260 220" aria-hidden="true" focusable="false">
+  <path d="M96 196 V162 M118 196 V164 l8 -10" stroke="#1d1d1b" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <use href="#stork" x="40" y="20" width="150" height="150"/>
+  <path d="M72 74 Q110 34 148 72 L162 78 Q110 64 66 82Z" fill="#2f8a5f" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M96 140 L110 148 L96 156Z M124 140 L110 148 L124 156Z" fill="#b8402a" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="110" cy="148" r="4" fill="#d9a441" stroke="#1d1d1b" stroke-width="2"/>
+  <g stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round">
+    <rect x="176" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(-14 198 135)"/>
+    <rect x="190" y="100" width="44" height="62" rx="6" fill="#f5ecd7"/>
+    <rect x="204" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(14 226 135)"/>
+  </g>
+  <text x="212" y="140" text-anchor="middle" font-family="Rockwell, 'Roboto Slab', Georgia, serif" font-weight="700" font-size="24" fill="#1d1d1b">5</text>
+  <rect x="0" y="196" width="260" height="24" rx="8" fill="#7a4a26"/><rect x="0" y="196" width="260" height="5" fill="#d9a441"/>
+</svg>
+<section class="panel controls" aria-labelledby="voting-d-controls">
+  <h3 id="voting-d-controls">Voting controls</h3>
+  <div class="actions"><button type="button" class="primary">Reveal votes</button><button type="button">Reset votes</button></div>
+</section>
+<section class="panel share" aria-label="Share this room">
+  <label for="voting-d-url">Invite your team with this link</label>
+  <div class="share-row"><input id="voting-d-url" type="text" readonly value="https://alexisc-kainos.github.io/ai-assisted-planning-poker/?room=k7mq-2xpa"><button type="button">Copy link</button></div>
+</section>
+<section class="panel spectate" aria-label="Participation">
+  <label class="switch"><input type="checkbox" role="switch"><span class="track" aria-hidden="true"></span>Spectate</label>
+</section></div>
+  </div>
+</div></div></figure>
+    <figure><figcaption>Mobile · 390 × 844</figcaption><div class="frame mobile"><div class="cb">
+  <div class="top"><p class="brand"><span class="suit" aria-hidden="true">♣</span> Planning Poker</p><p class="room">Table <code>k7mq-2xpa</code></p></div>
+  <div class="layout">
+    <div class="col rail">
+<section class="panel tickets" aria-labelledby="voting-m-tickets">
+  <h3 id="voting-m-tickets">Tickets (3/10)</h3>
+
+  <ol class="ticket-list" aria-label="Tickets"><li class="ticket active" aria-current="true">
+      <div class="badges"><span class="badge type-story">Story</span><span class="badge voted">Active</span></div>
+      <p class="ticket-text">As a shopper I want to save my basket so I can finish checkout later</p>
+      <div class="actions"><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">Show delivery slots on the checkout page</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-spike">Spike</span></div>
+      <p class="ticket-text">Investigate payment provider webhooks</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li></ol>
+</section></div>
+    <div class="col centre">
+<section class="table-wrap" aria-labelledby="voting-m-roster">
+  <h3 id="voting-m-roster">In the room (4)</h3>
+  <div class="table">
+    <div class="felt-center"><div class="center-card"><span class="badge type-story">Story</span><p class="now"><strong>Now voting:</strong> As a shopper I want to save my basket so I can finish checkout later</p></div></div>
+    <ul class="seats"><li class="seat seat-priya"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg></span><span class="seat-info"><span class="person-name">Priya<span class="you"> (you)</span></span><span class="badges"><span class="badge host">Host</span><span class="badge voted">✓ Voted</span></span></span><span class="seat-card back" aria-hidden="true"></span></li><li class="seat seat-tom"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg></span><span class="seat-info"><span class="person-name">Tom</span><span class="badges"><span class="badge voted">✓ Voted</span></span></span><span class="seat-card back" aria-hidden="true"></span></li><li class="seat seat-aisha"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg></span><span class="seat-info"><span class="person-name">Aisha</span><span class="badges"><span class="badge waiting">Waiting</span></span></span><span class="seat-card empty" aria-hidden="true"></span></li><li class="seat seat-ben"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg></span><span class="seat-info"><span class="person-name">Ben</span><span class="badges"><span class="badge spectating">Spectating</span></span></span></li></ul>
+  </div>
+</section>
+<section class="panel deck hand" aria-labelledby="voting-m-deck">
+  <h3 id="voting-m-deck">Your vote</h3>
+  <div class="deck-cards" role="group" aria-labelledby="voting-m-deck"><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">1</span><span class="vcard-value">1</span><span class="corner br" aria-hidden="true">1</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">2</span><span class="vcard-value">2</span><span class="corner br" aria-hidden="true">2</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">3</span><span class="vcard-value">3</span><span class="corner br" aria-hidden="true">3</span></button><button type="button" class="vcard selected" aria-pressed="true"><span class="corner" aria-hidden="true">5</span><span class="vcard-value">5</span><span class="corner br" aria-hidden="true">5</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">8</span><span class="vcard-value">8</span><span class="corner br" aria-hidden="true">8</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">13</span><span class="vcard-value">13</span><span class="corner br" aria-hidden="true">13</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">20</span><span class="vcard-value">20</span><span class="corner br" aria-hidden="true">20</span></button><button type="button" class="vcard" aria-pressed="false" aria-label="Coffee break"><span class="corner" aria-hidden="true">☕</span><span class="vcard-value">☕</span><span class="corner br" aria-hidden="true">☕</span></button></div>
+</section></div>
+    <div class="col tray">
+<svg class="mascot" viewBox="0 0 260 220" aria-hidden="true" focusable="false">
+  <path d="M96 196 V162 M118 196 V164 l8 -10" stroke="#1d1d1b" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <use href="#stork" x="40" y="20" width="150" height="150"/>
+  <path d="M72 74 Q110 34 148 72 L162 78 Q110 64 66 82Z" fill="#2f8a5f" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M96 140 L110 148 L96 156Z M124 140 L110 148 L124 156Z" fill="#b8402a" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="110" cy="148" r="4" fill="#d9a441" stroke="#1d1d1b" stroke-width="2"/>
+  <g stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round">
+    <rect x="176" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(-14 198 135)"/>
+    <rect x="190" y="100" width="44" height="62" rx="6" fill="#f5ecd7"/>
+    <rect x="204" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(14 226 135)"/>
+  </g>
+  <text x="212" y="140" text-anchor="middle" font-family="Rockwell, 'Roboto Slab', Georgia, serif" font-weight="700" font-size="24" fill="#1d1d1b">5</text>
+  <rect x="0" y="196" width="260" height="24" rx="8" fill="#7a4a26"/><rect x="0" y="196" width="260" height="5" fill="#d9a441"/>
+</svg>
+<section class="panel controls" aria-labelledby="voting-m-controls">
+  <h3 id="voting-m-controls">Voting controls</h3>
+  <div class="actions"><button type="button" class="primary">Reveal votes</button><button type="button">Reset votes</button></div>
+</section>
+<section class="panel share" aria-label="Share this room">
+  <label for="voting-m-url">Invite your team with this link</label>
+  <div class="share-row"><input id="voting-m-url" type="text" readonly value="https://alexisc-kainos.github.io/ai-assisted-planning-poker/?room=k7mq-2xpa"><button type="button">Copy link</button></div>
+</section>
+<section class="panel spectate" aria-label="Participation">
+  <label class="switch"><input type="checkbox" role="switch"><span class="track" aria-hidden="true"></span>Spectate</label>
+</section></div>
+  </div>
+</div></div></figure>
+  </div>
+</section>
+
+<section class="screen" aria-labelledby="screen-revealed">
+  <h2 id="screen-revealed">3. Revealed results</h2>
+  <p class="state-note">Votes have been revealed: Priya 5, Tom 5, Aisha 8. Ben is spectating, so he isn't included. 5 is the most common vote.</p>
+  <div class="frames">
+    <figure><figcaption>Desktop · 1440 × 900</figcaption><div class="frame desktop"><div class="cb">
+  <div class="top"><p class="brand"><span class="suit" aria-hidden="true">♣</span> Planning Poker</p><p class="room">Table <code>k7mq-2xpa</code></p></div>
+  <div class="layout">
+    <div class="col rail">
+<section class="panel tickets" aria-labelledby="revealed-d-tickets">
+  <h3 id="revealed-d-tickets">Tickets (3/10)</h3>
+
+  <ol class="ticket-list" aria-label="Tickets"><li class="ticket active" aria-current="true">
+      <div class="badges"><span class="badge type-story">Story</span><span class="badge voted">Active</span><span class="badge revealed">Revealed</span></div>
+      <p class="ticket-text">As a shopper I want to save my basket so I can finish checkout later</p>
+      <div class="actions"><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">Show delivery slots on the checkout page</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-spike">Spike</span></div>
+      <p class="ticket-text">Investigate payment provider webhooks</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li></ol>
+</section></div>
+    <div class="col centre">
+<section class="table-wrap" aria-labelledby="revealed-d-roster">
+  <h3 id="revealed-d-roster">In the room (4)</h3>
+  <div class="table">
+    <div class="felt-center"><div class="center-card"><span class="badge type-story">Story</span><p class="now"><strong>Now voting:</strong> As a shopper I want to save my basket so I can finish checkout later</p></div></div>
+    <ul class="seats"><li class="seat seat-priya"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg></span><span class="seat-info"><span class="person-name">Priya<span class="you"> (you)</span></span><span class="badges"><span class="badge host">Host</span><span class="badge voted">✓ Voted</span></span></span><span class="seat-card up" aria-hidden="true">5</span></li><li class="seat seat-tom"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg></span><span class="seat-info"><span class="person-name">Tom</span><span class="badges"><span class="badge voted">✓ Voted</span></span></span><span class="seat-card up" aria-hidden="true">5</span></li><li class="seat seat-aisha"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg></span><span class="seat-info"><span class="person-name">Aisha</span><span class="badges"><span class="badge voted">✓ Voted</span></span></span><span class="seat-card up" aria-hidden="true">8</span></li><li class="seat seat-ben"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg></span><span class="seat-info"><span class="person-name">Ben</span><span class="badges"><span class="badge spectating">Spectating</span></span></span></li></ul>
+  </div>
+</section>
+<section class="panel results chips" aria-labelledby="revealed-d-results">
+  <h3 id="revealed-d-results">Vote results</h3>
+  <div class="results-layout">
+    <div>
+      <h4>Frequency</h4>
+      <ol class="bars" aria-label="Vote frequency">
+        <li class="bar-row top"><span class="bar-value">5</span><div class="bar-track" role="meter" aria-label="5: 2 votes, most common" aria-valuemin="0" aria-valuemax="2" aria-valuenow="2"><span class="bar" style="width:100%"></span></div><strong aria-hidden="true">2</strong><span class="most">Most common</span></li>
+        <li class="bar-row"><span class="bar-value">8</span><div class="bar-track" role="meter" aria-label="8: 1 vote" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1"><span class="bar" style="width:50%"></span></div><strong aria-hidden="true">1</strong></li>
+      </ol>
+    </div>
+    <div>
+      <h4>Participants</h4>
+      <ul class="participant-votes" aria-label="Participant votes">
+        <li><span>Priya</span><strong>5</strong></li><li><span>Tom</span><strong>5</strong></li><li><span>Aisha</span><strong>8</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+<section class="panel deck hand" aria-labelledby="revealed-d-deck">
+  <h3 id="revealed-d-deck">Your vote</h3>
+  <div class="deck-cards" role="group" aria-labelledby="revealed-d-deck"><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">1</span><span class="vcard-value">1</span><span class="corner br" aria-hidden="true">1</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">2</span><span class="vcard-value">2</span><span class="corner br" aria-hidden="true">2</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">3</span><span class="vcard-value">3</span><span class="corner br" aria-hidden="true">3</span></button><button type="button" class="vcard selected" aria-pressed="true"><span class="corner" aria-hidden="true">5</span><span class="vcard-value">5</span><span class="corner br" aria-hidden="true">5</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">8</span><span class="vcard-value">8</span><span class="corner br" aria-hidden="true">8</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">13</span><span class="vcard-value">13</span><span class="corner br" aria-hidden="true">13</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">20</span><span class="vcard-value">20</span><span class="corner br" aria-hidden="true">20</span></button><button type="button" class="vcard" aria-pressed="false" aria-label="Coffee break"><span class="corner" aria-hidden="true">☕</span><span class="vcard-value">☕</span><span class="corner br" aria-hidden="true">☕</span></button></div>
+</section></div>
+    <div class="col tray">
+<svg class="mascot" viewBox="0 0 260 220" aria-hidden="true" focusable="false">
+  <path d="M96 196 V162 M118 196 V164 l8 -10" stroke="#1d1d1b" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <use href="#stork" x="40" y="20" width="150" height="150"/>
+  <path d="M72 74 Q110 34 148 72 L162 78 Q110 64 66 82Z" fill="#2f8a5f" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M96 140 L110 148 L96 156Z M124 140 L110 148 L124 156Z" fill="#b8402a" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="110" cy="148" r="4" fill="#d9a441" stroke="#1d1d1b" stroke-width="2"/>
+  <g stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round">
+    <rect x="176" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(-14 198 135)"/>
+    <rect x="190" y="100" width="44" height="62" rx="6" fill="#f5ecd7"/>
+    <rect x="204" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(14 226 135)"/>
+  </g>
+  <text x="212" y="140" text-anchor="middle" font-family="Rockwell, 'Roboto Slab', Georgia, serif" font-weight="700" font-size="24" fill="#1d1d1b">5</text>
+  <rect x="0" y="196" width="260" height="24" rx="8" fill="#7a4a26"/><rect x="0" y="196" width="260" height="5" fill="#d9a441"/>
+</svg>
+<section class="panel controls" aria-labelledby="revealed-d-controls">
+  <h3 id="revealed-d-controls">Voting controls</h3>
+  <div class="actions"><button type="button" class="primary">Reveal votes</button><button type="button">Reset votes</button></div>
+</section>
+<section class="panel share" aria-label="Share this room">
+  <label for="revealed-d-url">Invite your team with this link</label>
+  <div class="share-row"><input id="revealed-d-url" type="text" readonly value="https://alexisc-kainos.github.io/ai-assisted-planning-poker/?room=k7mq-2xpa"><button type="button">Copy link</button></div>
+</section>
+<section class="panel spectate" aria-label="Participation">
+  <label class="switch"><input type="checkbox" role="switch"><span class="track" aria-hidden="true"></span>Spectate</label>
+</section></div>
+  </div>
+</div></div></figure>
+    <figure><figcaption>Mobile · 390 × 844</figcaption><div class="frame mobile"><div class="cb">
+  <div class="top"><p class="brand"><span class="suit" aria-hidden="true">♣</span> Planning Poker</p><p class="room">Table <code>k7mq-2xpa</code></p></div>
+  <div class="layout">
+    <div class="col rail">
+<section class="panel tickets" aria-labelledby="revealed-m-tickets">
+  <h3 id="revealed-m-tickets">Tickets (3/10)</h3>
+
+  <ol class="ticket-list" aria-label="Tickets"><li class="ticket active" aria-current="true">
+      <div class="badges"><span class="badge type-story">Story</span><span class="badge voted">Active</span><span class="badge revealed">Revealed</span></div>
+      <p class="ticket-text">As a shopper I want to save my basket so I can finish checkout later</p>
+      <div class="actions"><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-story">Story</span></div>
+      <p class="ticket-text">Show delivery slots on the checkout page</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li><li class="ticket">
+      <div class="badges"><span class="badge type-spike">Spike</span></div>
+      <p class="ticket-text">Investigate payment provider webhooks</p>
+      <div class="actions"><button type="button" class="primary">Vote on this</button><button type="button">Edit</button><button type="button">Delete</button></div>
+    </li></ol>
+</section></div>
+    <div class="col centre">
+<section class="table-wrap" aria-labelledby="revealed-m-roster">
+  <h3 id="revealed-m-roster">In the room (4)</h3>
+  <div class="table">
+    <div class="felt-center"><div class="center-card"><span class="badge type-story">Story</span><p class="now"><strong>Now voting:</strong> As a shopper I want to save my basket so I can finish checkout later</p></div></div>
+    <ul class="seats"><li class="seat seat-priya"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#capybara"/></svg></span><span class="seat-info"><span class="person-name">Priya<span class="you"> (you)</span></span><span class="badges"><span class="badge host">Host</span><span class="badge voted">✓ Voted</span></span></span><span class="seat-card up" aria-hidden="true">5</span></li><li class="seat seat-tom"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#stork"/></svg></span><span class="seat-info"><span class="person-name">Tom</span><span class="badges"><span class="badge voted">✓ Voted</span></span></span><span class="seat-card up" aria-hidden="true">5</span></li><li class="seat seat-aisha"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#fox"/></svg></span><span class="seat-info"><span class="person-name">Aisha</span><span class="badges"><span class="badge voted">✓ Voted</span></span></span><span class="seat-card up" aria-hidden="true">8</span></li><li class="seat seat-ben"><span class="pin"><svg class="ava" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><use href="#penguin"/></svg></span><span class="seat-info"><span class="person-name">Ben</span><span class="badges"><span class="badge spectating">Spectating</span></span></span></li></ul>
+  </div>
+</section>
+<section class="panel results chips" aria-labelledby="revealed-m-results">
+  <h3 id="revealed-m-results">Vote results</h3>
+  <div class="results-layout">
+    <div>
+      <h4>Frequency</h4>
+      <ol class="bars" aria-label="Vote frequency">
+        <li class="bar-row top"><span class="bar-value">5</span><div class="bar-track" role="meter" aria-label="5: 2 votes, most common" aria-valuemin="0" aria-valuemax="2" aria-valuenow="2"><span class="bar" style="width:100%"></span></div><strong aria-hidden="true">2</strong><span class="most">Most common</span></li>
+        <li class="bar-row"><span class="bar-value">8</span><div class="bar-track" role="meter" aria-label="8: 1 vote" aria-valuemin="0" aria-valuemax="2" aria-valuenow="1"><span class="bar" style="width:50%"></span></div><strong aria-hidden="true">1</strong></li>
+      </ol>
+    </div>
+    <div>
+      <h4>Participants</h4>
+      <ul class="participant-votes" aria-label="Participant votes">
+        <li><span>Priya</span><strong>5</strong></li><li><span>Tom</span><strong>5</strong></li><li><span>Aisha</span><strong>8</strong></li>
+      </ul>
+    </div>
+  </div>
+</section>
+<section class="panel deck hand" aria-labelledby="revealed-m-deck">
+  <h3 id="revealed-m-deck">Your vote</h3>
+  <div class="deck-cards" role="group" aria-labelledby="revealed-m-deck"><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">1</span><span class="vcard-value">1</span><span class="corner br" aria-hidden="true">1</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">2</span><span class="vcard-value">2</span><span class="corner br" aria-hidden="true">2</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">3</span><span class="vcard-value">3</span><span class="corner br" aria-hidden="true">3</span></button><button type="button" class="vcard selected" aria-pressed="true"><span class="corner" aria-hidden="true">5</span><span class="vcard-value">5</span><span class="corner br" aria-hidden="true">5</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">8</span><span class="vcard-value">8</span><span class="corner br" aria-hidden="true">8</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">13</span><span class="vcard-value">13</span><span class="corner br" aria-hidden="true">13</span></button><button type="button" class="vcard" aria-pressed="false"><span class="corner" aria-hidden="true">20</span><span class="vcard-value">20</span><span class="corner br" aria-hidden="true">20</span></button><button type="button" class="vcard" aria-pressed="false" aria-label="Coffee break"><span class="corner" aria-hidden="true">☕</span><span class="vcard-value">☕</span><span class="corner br" aria-hidden="true">☕</span></button></div>
+</section></div>
+    <div class="col tray">
+<svg class="mascot" viewBox="0 0 260 220" aria-hidden="true" focusable="false">
+  <path d="M96 196 V162 M118 196 V164 l8 -10" stroke="#1d1d1b" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <use href="#stork" x="40" y="20" width="150" height="150"/>
+  <path d="M72 74 Q110 34 148 72 L162 78 Q110 64 66 82Z" fill="#2f8a5f" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M96 140 L110 148 L96 156Z M124 140 L110 148 L124 156Z" fill="#b8402a" stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="110" cy="148" r="4" fill="#d9a441" stroke="#1d1d1b" stroke-width="2"/>
+  <g stroke="#1d1d1b" stroke-width="3" stroke-linejoin="round">
+    <rect x="176" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(-14 198 135)"/>
+    <rect x="190" y="100" width="44" height="62" rx="6" fill="#f5ecd7"/>
+    <rect x="204" y="104" width="44" height="62" rx="6" fill="#f5ecd7" transform="rotate(14 226 135)"/>
+  </g>
+  <text x="212" y="140" text-anchor="middle" font-family="Rockwell, 'Roboto Slab', Georgia, serif" font-weight="700" font-size="24" fill="#1d1d1b">5</text>
+  <rect x="0" y="196" width="260" height="24" rx="8" fill="#7a4a26"/><rect x="0" y="196" width="260" height="5" fill="#d9a441"/>
+</svg>
+<section class="panel controls" aria-labelledby="revealed-m-controls">
+  <h3 id="revealed-m-controls">Voting controls</h3>
+  <div class="actions"><button type="button" class="primary">Reveal votes</button><button type="button">Reset votes</button></div>
+</section>
+<section class="panel share" aria-label="Share this room">
+  <label for="revealed-m-url">Invite your team with this link</label>
+  <div class="share-row"><input id="revealed-m-url" type="text" readonly value="https://alexisc-kainos.github.io/ai-assisted-planning-poker/?room=k7mq-2xpa"><button type="button">Copy link</button></div>
+</section>
+<section class="panel spectate" aria-label="Participation">
+  <label class="switch"><input type="checkbox" role="switch"><span class="track" aria-hidden="true"></span>Spectate</label>
+</section></div>
+  </div>
+</div></div></figure>
+  </div>
+</section>
+</main>
+</body>
+</html>

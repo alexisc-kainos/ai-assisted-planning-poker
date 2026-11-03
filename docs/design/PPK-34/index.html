@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPK-34 · Animal-themed UI concepts · Planning Poker</title>
+  <style>
+    /* Tokens: text #2b2a33 on #f7f5f0 (13.4:1); link #2f5d8a on #ffffff (6.9:1); muted #5a5864 on #ffffff (6.9:1) */
+    :root {
+      --bg: #f7f5f0;
+      --card: #ffffff;
+      --text: #2b2a33;
+      --muted: #5a5864;
+      --link: #2f5d8a;
+      --line: #d9d5cc;
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    body { margin: 0; }
+    main { max-width: 960px; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+    h1 { margin: 0 0 .5rem; font-size: 2rem; }
+    p { line-height: 1.55; }
+    .lede { color: var(--muted); max-width: 60ch; }
+    ul.concepts { list-style: none; padding: 0; margin: 2rem 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .concepts li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; }
+    .swatch { display: flex; gap: .35rem; margin-bottom: .75rem; }
+    .swatch span { width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); }
+    h2 { margin: 0 0 .35rem; font-size: 1.2rem; }
+    a { color: var(--link); font-weight: 600; }
+    a:focus-visible { outline: 3px solid var(--link); outline-offset: 3px; border-radius: 4px; }
+    .concepts p { margin: .25rem 0 .75rem; color: var(--muted); }
+    .note { border-left: 4px solid var(--line); padding-left: 1rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Planning Poker · animal-themed UI concepts</h1>
+    <p class="lede">Design spike for PPK-34. These are three different visual directions to choose from. Each one has static mockups of the session lobby, voting and revealed results screens at desktop (1440&nbsp;px) and mobile (390&nbsp;px) widths. The screens use the app's real content and behaviour. They're for exploration only and don't change the app.</p>
+
+    <ul class="concepts">
+      <li>
+        <div class="swatch" aria-hidden="true"><span style="background:#f4efe6"></span><span style="background:#7f9c8c"></span><span style="background:#2d3a3a"></span></div>
+        <h2>A · Riverside Lounge</h2>
+        <p>A calm, editorial look with soft neutrals and a serif type. A capybara relaxes in a hot spring.</p>
+        <a href="concept-a.html">View concept A</a>
+      </li>
+      <li>
+        <div class="swatch" aria-hidden="true"><span style="background:#1f4d3a"></span><span style="background:#f5ecd7"></span><span style="background:#b8402a"></span></div>
+        <h2>B · Card Club</h2>
+        <p>Feels like a real card game: a felt table with seats around it, a hand of cards, and a stork as the dealer.</p>
+        <a href="concept-b.html">View concept B</a>
+      </li>
+      <li>
+        <div class="swatch" aria-hidden="true"><span style="background:#0f1530"></span><span style="background:#5ef0c8"></span><span style="background:#ffc861"></span></div>
+        <h2>C · Night Safari</h2>
+        <p>A dark-mode dashboard with glassy panels and neon accents. The animals are drawn like constellations.</p>
+        <a href="concept-c.html">View concept C</a>
+      </li>
+    </ul>
+
+    <p><a href="README.md">Read the comparison of the three concepts</a></p>
+    <p class="note">Product owner choice: <strong>A · Riverside Lounge</strong>. A follow-up ticket will cover applying it to the app.</p>
+  </main>
+</body>
+</html>
