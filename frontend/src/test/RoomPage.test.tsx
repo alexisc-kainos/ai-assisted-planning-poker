@@ -257,6 +257,23 @@ describe('RoomPage', () => {
       expect(rows[6]).toHaveTextContent('NoahNo vote');
     });
 
+    it('never gives two participants the same label when a name already looks suffixed', async () => {
+      const ws = await joinAs('user-b');
+      ws.emit({
+        ...roomState(null),
+        revealed: true,
+        users: [
+          { id: 'user-a', name: 'Sam', hasVoted: true },
+          { id: 'user-b', name: 'Sam', hasVoted: true },
+          { id: 'user-c', name: 'Sam (1)', hasVoted: true },
+        ],
+        votes: { 'user-a': '1', 'user-b': '2', 'user-c': '3' },
+      });
+
+      const rows = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
+      expect(rows.map((row) => row.textContent)).toEqual(['Sam (2)1', 'Sam (3)2', 'Sam (1)3']);
+    });
+
     it('shows an empty graph when votes are revealed before anyone votes', async () => {
       const ws = await joinAs('user-b');
       ws.emit({ ...roomState(null), revealed: true, votes: {} });

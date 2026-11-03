@@ -32,7 +32,21 @@ export function VoteResults({ users, votes }: VoteResultsProps) {
   const maximumCount = frequencies[0]?.count ?? 1;
   const nameCounts = new Map<string, number>();
   users.forEach(({ name }) => nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1));
-  const nameIndexes = new Map<string, number>();
+  const takenLabels = new Set(users.map(({ name }) => name).filter((name) => nameCounts.get(name) === 1));
+  const nextSuffix = new Map<string, number>();
+  const labels = new Map<string, string>();
+  for (const { id, name } of users) {
+    if (nameCounts.get(name) === 1) {
+      labels.set(id, name);
+      continue;
+    }
+    let suffix = nextSuffix.get(name) ?? 1;
+    while (takenLabels.has(`${name} (${suffix})`)) suffix += 1;
+    const label = `${name} (${suffix})`;
+    takenLabels.add(label);
+    nextSuffix.set(name, suffix + 1);
+    labels.set(id, label);
+  }
 
   return (
     <section className="card vote-results" aria-labelledby="results-heading">
@@ -66,18 +80,12 @@ export function VoteResults({ users, votes }: VoteResultsProps) {
         <div>
           <h3>Participants</h3>
           <ul className="participant-votes" aria-label="Participant votes">
-            {users.map((user) => {
-              const duplicateIndex = nameIndexes.get(user.name) ?? 0;
-              nameIndexes.set(user.name, duplicateIndex + 1);
-              const name = nameCounts.get(user.name)! > 1 ? `${user.name} (${duplicateIndex + 1})` : user.name;
-
-              return (
-                <li key={user.id}>
-                  <span>{name}</span>
-                  <strong>{votes[user.id] ?? 'No vote'}</strong>
-                </li>
-              );
-            })}
+            {users.map((user) => (
+              <li key={user.id}>
+                <span>{labels.get(user.id)}</span>
+                <strong>{votes[user.id] ?? 'No vote'}</strong>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
