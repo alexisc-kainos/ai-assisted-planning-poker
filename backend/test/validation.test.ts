@@ -57,6 +57,15 @@ describe('parseConnectParams', () => {
   it('accepts a 32 character name', () => {
     expect(parse({ room: 'abcd', name: 'x'.repeat(32) })?.name).toHaveLength(32);
   });
+
+  it('reads spectating=1 as spectating and omits it when absent', () => {
+    expect(parse({ room: 'abcd', name: 'Bob', spectating: '1' })?.spectating).toBe(true);
+    expect(parse({ room: 'abcd', name: 'Bob' })).not.toHaveProperty('spectating');
+  });
+
+  it.each(['0', 'true', ''])('rejects spectating=%j', (spectating) => {
+    expect(parse({ room: 'abcd', name: 'Bob', spectating })).toBeNull();
+  });
 });
 
 describe('parseClientMessage', () => {
@@ -163,6 +172,20 @@ describe('parseClientMessage', () => {
         error: `Invalid ${type} message`,
       });
     }
+  });
+
+  it.each([true, false])('accepts setSpectating %s', (spectating) => {
+    expect(parseClientMessage(JSON.stringify({ type: 'setSpectating', spectating }))).toEqual({
+      ok: true,
+      message: { type: 'setSpectating', spectating },
+    });
+  });
+
+  it.each([undefined, 'true', 1, null])('rejects setSpectating with %j', (spectating) => {
+    expect(parseClientMessage(JSON.stringify({ type: 'setSpectating', spectating }))).toEqual({
+      ok: false,
+      error: 'Invalid setSpectating message',
+    });
   });
 
   it('no longer accepts setTicket', () => {

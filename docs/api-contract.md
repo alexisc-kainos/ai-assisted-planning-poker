@@ -11,7 +11,7 @@ The backend runs as a single Node.js process with all room state held in memory.
 ## Connecting
 
 ```
-wss://<host>/ws?room=<roomId>&name=<displayName>[&deck=<deckName>][&avatar=<avatarId>]
+wss://<host>/ws?room=<roomId>&name=<displayName>[&deck=<deckName>][&avatar=<avatarId>][&spectating=1]
 ```
 
 | Param  | Required | Description |
@@ -20,8 +20,9 @@ wss://<host>/ws?room=<roomId>&name=<displayName>[&deck=<deckName>][&avatar=<avat
 | `name` | yes | Display name shown to other participants. Trimmed; 1–32 chars after trim. |
 | `deck` | no | Frontend-controlled estimation deck identifier, e.g. `fibonacci` or `tshirt`. Open string with a maximum of 32 chars after trim. Blank values are treated as absent. Only meaningful on the room-creating connection; if a joiner's connection includes `deck`, the room's existing value wins. |
 | `avatar` | no | Frontend-controlled avatar identifier, e.g. `capybara` or `penguin`. Open string with a maximum of 32 chars after trim. Blank values are treated as absent. The backend does not validate it against a fixed set; the frontend owns the avatar catalogue. |
+| `spectating` | no | `1` joins as a spectator (see `setSpectating`). When absent the user joins as a participant. Any other value is invalid. Lets a client keep spectator mode across a reconnect. |
 
-If `room` or `name` fails validation, or a provided `deck` or `avatar` exceeds its maximum length, the server rejects the HTTP upgrade with `400 Bad Request` — the WebSocket never opens. If the room is already at capacity (`MAX_ROOM_USERS` (default 50) connections), the upgrade is rejected with `403 Forbidden`.
+If `room` or `name` fails validation, a provided `deck` or `avatar` exceeds its maximum length, or `spectating` has a value other than `1`, the server rejects the HTTP upgrade with `400 Bad Request` — the WebSocket never opens. If the room is already at capacity (`MAX_ROOM_USERS` (default 50) connections), the upgrade is rejected with `403 Forbidden`.
 
 Browsers do not expose the HTTP status of a rejected WebSocket upgrade, so clients should call `GET /rooms/:roomId` before connecting to tell the user a room is full.
 
@@ -62,7 +63,7 @@ Tells the client its own assigned `id`. The frontend should store this and compa
 
 ### `state`
 
-Broadcast to **all** clients in a room whenever anything changes (join, leave, vote, reveal, reset, ticket change, host change). The broadcast always includes the originator. Every `state` message is a full snapshot — clients should replace, not merge.
+Broadcast to **all** clients in a room whenever anything changes (join, leave, vote, reveal, reset, ticket change, spectating change, host change). The broadcast always includes the originator. Every `state` message is a full snapshot — clients should replace, not merge.
 
 ```json
 {
@@ -85,8 +86,8 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
   "activeTicketId": "ticket-4d5e6f",
   "round": 3,
   "users": [
-    { "id": "user-abc123", "name": "Alice", "avatar": "capybara", "hasVoted": true },
-    { "id": "user-def456", "name": "Bob", "avatar": "penguin", "hasVoted": false }
+    { "id": "user-abc123", "name": "Alice", "avatar": "capybara", "hasVoted": true, "spectating": false },
+    { "id": "user-def456", "name": "Bob", "avatar": "penguin", "hasVoted": false, "spectating": true }
   ],
   "votes": null,
   "myVote": "5"
@@ -99,10 +100,10 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
 - `myVote` is the receiving client's own current vote (or `null`), so the UI can show which card the server actually holds. It is the only per-recipient field; it never carries anyone else's value, and is the authoritative selection after a rejected re-vote.
 - `deck` is included only when the room-creating connection provided a non-blank value. The backend does not choose or default the deck; when absent, the field is omitted from `state`.
 - `tickets` is the room's ticket list (at most 10), in the order added. It is always present (`[]` when empty), survives host changes and is discarded with the room. Ticket `id`s are server-generated (`ticket-<hex>`) and unique within the room. Duplicate `content` is allowed. `tickets[].type` is `"story"` or `"spike"`; the frontend uses it to choose the voting deck (the backend does not restrict vote values by type).
-- `tickets[].result` is the snapshot taken the last time votes were revealed while that ticket was active, or `null` if never revealed. `result.users` lists everyone in the room at reveal time in join order (`avatar` omitted when absent), and `result.votes` maps those user ids to their values (non-voters are absent). It is not changed by `reset`, switching tickets, editing the ticket's content, or users leaving; changing the ticket's type clears it to `null`; the next reveal on that ticket overwrites it.
+- `tickets[].result` is the snapshot taken the last time votes were revealed while that ticket was active, or `null` if never revealed. `result.users` lists everyone in the room at reveal time in join order, except spectators who have no vote (`avatar` omitted when absent), and `result.votes` maps those user ids to their values (non-voters are absent). It is not changed by `reset`, switching tickets, editing the ticket's content, or users leaving; changing the ticket's type clears it to `null`; the next reveal on that ticket overwrites it.
 - `activeTicketId` is the id of the ticket currently being voted on, or `null` when none is active. Tickets never become active automatically.
 - `round` identifies the current voting round. It starts at `0` and increases by one whenever the round is cleared: a successful `reset`, `selectTicket`, removing the active ticket, or changing the active ticket's type. Clients send it back with every `vote` so votes cast for an earlier round are rejected.
-- `users` is ordered by join order (`seq`). `users[].avatar` is included only when that connection provided a non-blank `avatar`; otherwise it is omitted.
+- `users` is ordered by join order (`seq`). `users[].avatar` is included only when that connection provided a non-blank `avatar`; otherwise it is omitted. `users[].spectating` is `true` while that user is spectating (see `setSpectating`).
 - A user disconnecting mid-round is removed from `users[]` and from the `votes` map; no auto-reveal flip occurs. If a host disconnects, the roster change and the host-promotion ride the same `state` message.
 - Reconnects are fresh users (new `id`, new `seq`, no vote) and do not regain host, even if they were the original host.
 
@@ -123,6 +124,7 @@ The full error vocabulary:
 | Known `type`, bad shape (e.g. `vote` without `value`, `vote.value` non-string) | `Invalid <type> message` |
 | `vote` whose `round` is not the current `state.round` | `Vote was for a previous round` |
 | `vote` while `revealed === true` | `Voting is locked until reset` |
+| `vote` while spectating | `Spectators cannot vote` |
 | `reveal` by non-host | `Only the host can reveal votes` |
 | `reset` by non-host | `Only the host can reset votes` |
 | `addTicket` by non-host | `Only the host can add tickets` |
@@ -206,6 +208,17 @@ Removes a ticket and its stored `result`. If it was the active ticket, `activeTi
 ```
 
 Makes any ticket in the list active and starts a fresh round: all votes are cleared and `revealed` becomes `false`. Stored `result`s of every ticket, including the newly active one, are kept until that ticket is revealed again. Selecting the already-active ticket is rejected with `Ticket is already active`.
+
+### `setSpectating`
+
+```json
+{ "type": "setSpectating", "spectating": true }
+```
+
+Any user (host or not) can switch between participating and spectating at any time; everyone joins as a participant unless they connect with `spectating=1`. `spectating` must be a boolean, otherwise the message is rejected with `Invalid setSpectating message`. Always broadcasts `state`, even when the value is unchanged.
+
+- Spectators cannot vote (`Spectators cannot vote`). A host who spectates keeps every host action.
+- Switching to spectating while votes are unrevealed discards that user's vote. After a reveal their vote is kept, so `votes` and the stored `result` don't change until the round is cleared.
 
 ### Disconnection
 

@@ -98,6 +98,9 @@ export function createAppServer(config: Config): AppServer {
         case 'selectTicket':
           error = conn.room.selectTicket(conn.userId, message.ticketId);
           break;
+        case 'setSpectating':
+          error = conn.room.setSpectating(conn.userId, message.spectating);
+          break;
       }
 
       if (error) send(ws, { type: 'error', message: error });
@@ -137,7 +140,7 @@ export function createAppServer(config: Config): AppServer {
       roomSockets.set(room.id, new Map());
     }
 
-    const member = room.add(params.name, params.avatar);
+    const member = room.add(params.name, params.avatar, params.spectating);
     roomSockets.get(room.id)?.set(member.id, ws);
     connections.set(ws, { room, userId: member.id, windowStart: Date.now(), messageCount: 0 });
 

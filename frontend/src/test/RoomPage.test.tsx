@@ -460,6 +460,67 @@ describe('RoomPage', () => {
     });
   });
 
+  describe('participating and spectating', () => {
+    const roomState = (spectating: Record<string, boolean>, extra: object = {}) => ({
+      type: 'state',
+      hostId: 'user-a',
+      revealed: false,
+      tickets: [],
+      activeTicketId: null,
+      round: 0,
+      users: [
+        { id: 'user-a', name: 'Alice', hasVoted: false, spectating: spectating['user-a'] ?? false },
+        { id: 'user-b', name: 'Bob', hasVoted: false, spectating: spectating['user-b'] ?? false },
+      ],
+      votes: null,
+      myVote: null,
+      ...extra,
+    });
+
+    async function joinAsBob() {
+      mockRoomStatus({ exists: true, userCount: 1, capacity: 50, full: false });
+      render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin('Bob', 'Penguin');
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      const ws = FakeWebSocket.instances[0];
+      ws.emit({ type: 'welcome', userId: 'user-b' });
+      ws.emit(roomState({}));
+      return ws;
+    }
+
+    it('switches me to spectating, hiding the deck until I switch back', async () => {
+      const ws = await joinAsBob();
+      const user = userEvent.setup();
+      const toggle = screen.getByRole('switch', { name: 'Spectate' });
+      expect(toggle).not.toBeChecked();
+      expect(screen.getByRole('button', { name: '5' })).toBeInTheDocument();
+
+      await user.click(toggle);
+      expect(ws.sent).toEqual([{ type: 'setSpectating', spectating: true }]);
+      ws.emit(roomState({ 'user-b': true }));
+      expect(screen.getByRole('switch', { name: 'Spectate' })).toBeChecked();
+      expect(screen.queryByRole('button', { name: '5' })).not.toBeInTheDocument();
+      expect(screen.getByText("You're spectating — switch off to vote.")).toBeInTheDocument();
+      expect(screen.getAllByRole('listitem')[1]).toHaveTextContent('Bob (you)Spectating');
+
+      await user.click(screen.getByRole('switch', { name: 'Spectate' }));
+      expect(ws.sent.at(-1)).toEqual({ type: 'setSpectating', spectating: false });
+      ws.emit(roomState({}));
+      expect(screen.getByRole('button', { name: '5' })).toBeInTheDocument();
+    });
+
+    it('still shows results to a spectator, leaving out spectators who did not vote', async () => {
+      const ws = await joinAsBob();
+      ws.emit(roomState({ 'user-b': true }, { revealed: true, votes: { 'user-a': '5' } }));
+      const rows = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
+      expect(rows.map((row) => row.textContent)).toEqual(['Alice5']);
+
+      ws.emit(roomState({ 'user-b': true }, { revealed: true, votes: { 'user-a': '5', 'user-b': '8' } }));
+      const withVote = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
+      expect(withVote.map((row) => row.textContent)).toEqual(['Alice5', 'Bob8']);
+    });
+  });
+
   describe('after a server_shutdown close', () => {
     const state = {
       type: 'state',
@@ -523,6 +584,21 @@ describe('RoomPage', () => {
       unmount();
       advance(60_000);
       expect(FakeWebSocket.instances).toHaveLength(1);
+    });
+
+    it('rejoins as a spectator if I was spectating', async () => {
+      mockRoomStatus({ exists: false, userCount: 0, capacity: 50, full: false });
+      render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin();
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      expect(new URL(FakeWebSocket.instances[0].url).searchParams.has('spectating')).toBe(false);
+      FakeWebSocket.instances[0].emit({ type: 'welcome', userId: 'user-a' });
+      FakeWebSocket.instances[0].emit({ ...state, users: [{ ...state.users[0], spectating: true }] });
+      vi.useFakeTimers();
+      FakeWebSocket.instances[0].serverClose(1001);
+
+      advance(reconnectDelay(0));
+      expect(new URL(FakeWebSocket.instances[1].url).searchParams.get('spectating')).toBe('1');
     });
   });
 });
