@@ -108,6 +108,10 @@ export function useRoom(roomId: string) {
 
   const vote = useCallback((value: string) => send({ type: 'vote', value }), [send]);
 
+  const reveal = useCallback(() => send({ type: 'reveal' }), [send]);
+
+  const reset = useCallback(() => send({ type: 'reset' }), [send]);
+
   const setTicket = useCallback(
     (content: string) => send({ type: 'setTicket', ticket: { type: 'story', content } }),
     [send],
@@ -123,5 +127,5 @@ export function useRoom(roomId: string) {
     [],
   );
 
-  return { status, error, capacity, userId, state, join, vote, setTicket };
+  return { status, error, capacity, userId, state, join, vote, reveal, reset, setTicket };
 }

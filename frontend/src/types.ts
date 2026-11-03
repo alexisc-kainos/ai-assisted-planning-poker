@@ -26,7 +26,11 @@ export type ServerMessage =
   | RoomState
   | { type: 'error'; message: string };
 
-export type ClientMessage = { type: 'vote'; value: string } | { type: 'setTicket'; ticket: Ticket };
+export type ClientMessage =
+  | { type: 'vote'; value: string }
+  | { type: 'reveal' }
+  | { type: 'reset' }
+  | { type: 'setTicket'; ticket: Ticket };
 
 export interface RoomStatus {
   exists: boolean;

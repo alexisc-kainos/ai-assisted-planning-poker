@@ -3,6 +3,7 @@ import { JoinForm } from './JoinForm';
 import { Roster } from './Roster';
 import { TicketPanel } from './TicketPanel';
 import { VoteDeck } from './VoteDeck';
+import { VoteResults } from './VoteResults';
 import { joinUrl } from './room';
 import { useRoom } from './useRoom';
 
@@ -33,7 +34,7 @@ function CopyLink({ url }: { url: string }) {
 }
 
 export function RoomPage({ roomId }: { roomId: string }) {
-  const { status, error, capacity, userId, state, join, vote, setTicket } = useRoom(roomId);
+  const { status, error, capacity, userId, state, join, vote, reveal, reset, setTicket } = useRoom(roomId);
   const url = joinUrl(roomId);
 
   if (status === 'joined' && state) {
@@ -47,6 +48,16 @@ export function RoomPage({ roomId }: { roomId: string }) {
         <CopyLink url={url} />
         <TicketPanel ticket={state.ticket} isHost={state.hostId === userId} onSetTicket={setTicket} />
         <VoteDeck selected={state.myVote} disabled={state.revealed} onVote={vote} />
+        {userId === state.hostId && (
+          <section className="card" aria-labelledby="voting-controls-heading">
+            <h2 id="voting-controls-heading">Voting controls</h2>
+            <div className="vote-actions">
+              <button type="button" className="primary" onClick={reveal}>Reveal votes</button>
+              <button type="button" onClick={reset}>Reset votes</button>
+            </div>
+          </section>
+        )}
+        {state.revealed && <VoteResults users={state.users} votes={state.votes ?? {}} />}
         <Roster users={state.users} hostId={state.hostId} meId={userId} />
       </>
     );
