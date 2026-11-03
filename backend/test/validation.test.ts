@@ -95,7 +95,7 @@ describe('parseClientMessage', () => {
     ['missing ticket', '{"type":"addTicket"}'],
     ['null ticket', addTicket(null)],
     ['array ticket', addTicket([])],
-    ['spike type', addTicket({ type: 'spike', content: 'Login' })],
+    ['epic type', addTicket({ type: 'epic', content: 'Login' })],
     ['missing type', addTicket({ content: 'Login' })],
     ['numeric content', addTicket({ type: 'story', content: 5 })],
     ['blank content', addTicket({ type: 'story', content: ' \n ' })],
@@ -113,6 +113,13 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage(addTicket({ type: 'story', content: emoji }))).toMatchObject({ ok: true });
   });
 
+  it('accepts a spike addTicket', () => {
+    expect(parseClientMessage(addTicket({ type: 'spike', content: 'Investigate' }))).toEqual({
+      ok: true,
+      message: { type: 'addTicket', ticket: { type: 'spike', content: 'Investigate' } },
+    });
+  });
+
   it.each([
     ['missing ticketId', { content: 'Login' }],
     ['numeric ticketId', { ticketId: 1, content: 'Login' }],
@@ -121,6 +128,8 @@ describe('parseClientMessage', () => {
     ['missing content', { ticketId: 'ticket-1' }],
     ['blank content', { ticketId: 'ticket-1', content: '   ' }],
     ['501 chars', { ticketId: 'ticket-1', content: 'x'.repeat(501) }],
+    ['unknown ticketType', { ticketId: 'ticket-1', content: 'Login', ticketType: 'epic' }],
+    ['null ticketType', { ticketId: 'ticket-1', content: 'Login', ticketType: null }],
   ])('rejects editTicket with %s', (_label, fields) => {
     expect(parseClientMessage(JSON.stringify({ type: 'editTicket', ...fields }))).toEqual({
       ok: false,
@@ -132,6 +141,14 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage(JSON.stringify({ type: 'editTicket', ticketId: 'ticket-1', content: ' SSO ' }))).toEqual({
       ok: true,
       message: { type: 'editTicket', ticketId: 'ticket-1', content: 'SSO' },
+    });
+  });
+
+  it.each(['story', 'spike'])('accepts editTicket with ticketType %s', (ticketType) => {
+    const raw = JSON.stringify({ type: 'editTicket', ticketId: 'ticket-1', content: 'SSO', ticketType });
+    expect(parseClientMessage(raw)).toEqual({
+      ok: true,
+      message: { type: 'editTicket', ticketId: 'ticket-1', content: 'SSO', ticketType },
     });
   });
 

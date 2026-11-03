@@ -1,16 +1,17 @@
 import { useId } from 'react';
-import { STORY_DECK } from './config';
-import type { RosterUser } from './types';
+import { deckFor, voteLabel } from './config';
+import type { RosterUser, TicketType } from './types';
 
 interface VoteResultsProps {
   users: Array<Pick<RosterUser, 'id' | 'name'>>;
   votes: Record<string, string>;
+  ticketType?: TicketType;
   title?: string;
 }
 
-export function VoteResults({ users, votes, title = 'Vote results' }: VoteResultsProps) {
+export function VoteResults({ users, votes, ticketType = 'story', title = 'Vote results' }: VoteResultsProps) {
   const headingId = useId();
-  const deckOrder = new Map<string, number>(STORY_DECK.map((value, index) => [value, index]));
+  const deckOrder = new Map<string, number>(deckFor(ticketType).map((value, index) => [value, index]));
   const counts = new Map<string, number>();
   const firstSeen = new Map<string, number>();
 
@@ -63,11 +64,11 @@ export function VoteResults({ users, votes, title = 'Vote results' }: VoteResult
             <ol className="vote-results-bars" aria-label="Vote frequency">
               {frequencies.map(({ value, count }) => (
                 <li key={value} className="vote-result-row">
-                  <span className="vote-result-value">{value}</span>
+                  <span className="vote-result-value">{voteLabel(value, ticketType)}</span>
                   <div
                     className="vote-result-track"
                     role="meter"
-                    aria-label={`${value}: ${count} ${count === 1 ? 'vote' : 'votes'}`}
+                    aria-label={`${voteLabel(value, ticketType)}: ${count} ${count === 1 ? 'vote' : 'votes'}`}
                     aria-valuemin={0}
                     aria-valuemax={maximumCount}
                     aria-valuenow={count}
@@ -86,7 +87,7 @@ export function VoteResults({ users, votes, title = 'Vote results' }: VoteResult
             {users.map((user) => (
               <li key={user.id}>
                 <span>{labels.get(user.id)}</span>
-                <strong>{votes[user.id] ?? 'No vote'}</strong>
+                <strong>{votes[user.id] !== undefined ? voteLabel(votes[user.id], ticketType) : 'No vote'}</strong>
               </li>
             ))}
           </ul>

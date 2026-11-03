@@ -245,7 +245,7 @@ describe('RoomPage', () => {
       expect(ws.sent).toEqual([
         { type: 'addTicket', ticket: { type: 'story', content: 'Signup' } },
         { type: 'selectTicket', ticketId: 'ticket-2' },
-        { type: 'editTicket', ticketId: 'ticket-1', content: 'Login with SSO' },
+        { type: 'editTicket', ticketId: 'ticket-1', content: 'Login with SSO', ticketType: 'story' },
         { type: 'removeTicket', ticketId: 'ticket-1' },
       ]);
     });
@@ -299,6 +299,38 @@ describe('RoomPage', () => {
       const base = roomState(null, 'user-b');
       ws.emit({ ...base, tickets: [...base.tickets, { id: 'ticket-3', type: 'story', content: 'Signup', result: null }] });
       expect(screen.getByLabelText('What are we estimating?')).toHaveValue('');
+    });
+
+    it('switches to the day deck while a spike ticket is active and shows results in days', async () => {
+      const ws = await joinAs('user-b');
+      const [first, second] = roomState(null).tickets;
+      const spikeState = { ...roomState(null), tickets: [first, { ...second, type: 'spike' }], activeTicketId: 'ticket-2', round: 2 };
+      ws.emit(spikeState);
+
+      expect(screen.getByRole('heading', { name: 'Your vote (days)' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '13' })).not.toBeInTheDocument();
+      await userEvent.setup().click(screen.getByRole('button', { name: '3 days' }));
+      expect(ws.sent).toEqual([{ type: 'vote', value: '3', round: 2 }]);
+
+      ws.emit({ ...spikeState, revealed: true, votes: { 'user-a': '3', 'user-b': '1' } });
+      const meters = within(screen.getByRole('list', { name: 'Vote frequency' })).getAllByRole('meter');
+      expect(meters.map((meter) => meter.getAttribute('aria-label'))).toEqual(['1 day: 1 vote', '3 days: 1 vote']);
+      const rows = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
+      expect(rows.map((row) => row.textContent)).toEqual(['Alice3 days', 'Bob1 day']);
+
+      ws.emit(roomState(null));
+      expect(screen.getByRole('heading', { name: 'Your vote' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '13' })).toBeInTheDocument();
+    });
+
+    it('sends a type change for the active ticket from the host', async () => {
+      const ws = await joinAs('user-b', 'user-b');
+      const user = userEvent.setup();
+      const [first] = within(screen.getByRole('list', { name: 'Tickets' })).getAllByRole('listitem');
+      await user.click(within(first).getByRole('button', { name: 'Edit' }));
+      await user.click(within(first).getByRole('radio', { name: 'Spike' }));
+      await user.click(within(first).getByRole('button', { name: 'Save' }));
+      expect(ws.sent).toEqual([{ type: 'editTicket', ticketId: 'ticket-1', content: 'Login page', ticketType: 'spike' }]);
     });
 
     it('shows voting controls only to the current host and sends reveal/reset messages', async () => {

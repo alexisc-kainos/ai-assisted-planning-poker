@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { MAX_TICKETS, type Ticket } from './validation.js';
+import { MAX_TICKETS, type Ticket, type TicketType } from './validation.js';
 
 export interface Member {
   id: string;
@@ -115,11 +115,17 @@ export class Room {
     return null;
   }
 
-  editTicket(userId: string, ticketId: string, content: string): string | null {
+  editTicket(userId: string, ticketId: string, content: string, type?: TicketType): string | null {
     if (userId !== this.hostId) return 'Only the host can edit tickets';
     const ticket = this.tickets.find((existing) => existing.id === ticketId);
     if (!ticket) return 'Ticket not found';
     ticket.content = content;
+    if (type && type !== ticket.type) {
+      ticket.type = type;
+      // Votes and results in the old deck's units are meaningless after a type change.
+      ticket.result = null;
+      if (this.activeTicketId === ticketId) this.clearRound();
+    }
     return null;
   }
 

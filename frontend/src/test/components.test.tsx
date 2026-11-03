@@ -131,12 +131,35 @@ describe('VoteDeck', () => {
     render(<VoteDeck selected={null} disabled onVote={vi.fn()} />);
     for (const card of screen.getAllByRole('button')) expect(card).toBeDisabled();
   });
+
+  it('offers a 1-5 day deck plus coffee for spike tickets', async () => {
+    const onVote = vi.fn();
+    render(<VoteDeck selected="3" ticketType="spike" onVote={onVote} />);
+    expect(screen.getByRole('heading', { name: 'Your vote (days)' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button').map((card) => card.getAttribute('aria-label'))).toEqual([
+      '1 day',
+      '2 days',
+      '3 days',
+      '4 days',
+      '5 days',
+      'Coffee break',
+    ]);
+    expect(screen.getByRole('button', { name: '3 days' })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.setup().click(screen.getByRole('button', { name: '4 days' }));
+    expect(onVote).toHaveBeenCalledWith('4');
+  });
 });
 
 describe('TicketPanel', () => {
-  const ticket = (id: string, content: string, result: RoomTicket['result'] = null): RoomTicket => ({
+  const ticket = (
+    id: string,
+    content: string,
+    result: RoomTicket['result'] = null,
+    type: RoomTicket['type'] = 'story',
+  ): RoomTicket => ({
     id,
-    type: 'story',
+    type,
     content,
     result,
   });
@@ -150,18 +173,28 @@ describe('TicketPanel', () => {
     return { ...handlers, update: (next: Partial<Parameters<typeof TicketPanel>[0]>) => rerender(panel(next)) };
   };
 
-  it('lets the host add a story ticket with Spike shown but disabled', async () => {
+  it('lets the host add a story ticket by default', async () => {
     const { onAdd } = renderPanel();
     expect(screen.getByRole('heading', { name: 'Tickets (0/10)' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Story' })).toBeChecked();
-    expect(screen.getByRole('radio', { name: 'Spike' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Spike' })).toBeEnabled();
 
     const user = userEvent.setup();
     const submit = screen.getByRole('button', { name: 'Add ticket' });
     expect(submit).toBeDisabled();
     await user.type(screen.getByLabelText('What are we estimating?'), '  Login{Enter}page  ');
     await user.click(submit);
-    expect(onAdd).toHaveBeenCalledWith('Login\npage');
+    expect(onAdd).toHaveBeenCalledWith('Login\npage', 'story');
+  });
+
+  it('lets the host add a spike ticket', async () => {
+    const { onAdd } = renderPanel();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: 'Spike' }));
+    expect(screen.getByRole('radio', { name: 'Spike' })).toBeChecked();
+    await user.type(screen.getByLabelText('What are we estimating?'), 'Investigate SSO');
+    await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+    expect(onAdd).toHaveBeenCalledWith('Investigate SSO', 'spike');
   });
 
   it('keeps the add draft until the server broadcasts the new ticket', async () => {
@@ -170,7 +203,7 @@ describe('TicketPanel', () => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
     await user.click(screen.getByRole('button', { name: 'Add ticket' }));
-    expect(onAdd).toHaveBeenCalledWith('Signup');
+    expect(onAdd).toHaveBeenCalledWith('Signup', 'story');
     expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
 
     update({ tickets: [{ ...existing }] });
@@ -234,12 +267,32 @@ describe('TicketPanel', () => {
     await user.clear(editor);
     await user.type(editor, ' One with SSO ');
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(onEdit).toHaveBeenCalledWith('t1', 'One with SSO');
+    expect(onEdit).toHaveBeenCalledWith('t1', 'One with SSO', 'story');
     expect(screen.getByLabelText('Edit ticket text')).toHaveValue(' One with SSO ');
 
     update({ tickets: [ticket('t1', 'One with SSO')], activeTicketId: 't1' });
     expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
     expect(screen.getByText('One with SSO', { selector: 'li p' })).toBeInTheDocument();
+  });
+
+  it('changes a ticket type from the edit form, warning that votes and results are cleared', async () => {
+    const { onEdit, update } = renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: 't1' });
+    const item = () => screen.getByRole('listitem');
+    expect(within(item()).getByText('Story')).toBeInTheDocument();
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(within(item()).getByRole('radio', { name: 'Story' })).toBeChecked();
+    expect(screen.queryByText("Changing the type clears this ticket's votes and results.")).not.toBeInTheDocument();
+    await user.click(within(item()).getByRole('radio', { name: 'Spike' }));
+    expect(screen.getByText("Changing the type clears this ticket's votes and results.")).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onEdit).toHaveBeenCalledWith('t1', 'One', 'spike');
+    expect(screen.getByLabelText('Edit ticket text')).toBeInTheDocument();
+
+    update({ tickets: [ticket('t1', 'One', null, 'spike')], activeTicketId: 't1' });
+    expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
+    expect(within(item()).getByText('Spike')).toBeInTheDocument();
   });
 
   it('removes a ticket only after the host confirms', async () => {
@@ -285,5 +338,17 @@ describe('TicketPanel', () => {
     expect(screen.getByRole('button', { name: 'Hide results' })).toHaveAttribute('aria-expanded', 'true');
     const participants = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
     expect(participants.map((row) => row.textContent)).toEqual(['Sam5', 'KimNo vote']);
+  });
+
+  it('shows stored spike results in days', async () => {
+    renderPanel({
+      isHost: false,
+      tickets: [ticket('t1', 'One', { users: [{ id: 'u1', name: 'Sam' }, { id: 'u2', name: 'Kim' }], votes: { u1: '1', u2: '3' } }, 'spike')],
+    });
+    expect(screen.getByRole('listitem')).toHaveTextContent('Spike');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show results' }));
+    const participants = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
+    expect(participants.map((row) => row.textContent)).toEqual(['Sam1 day', 'Kim3 days']);
+    expect(screen.getByRole('meter', { name: '1 day: 1 vote' })).toBeInTheDocument();
   });
 });
