@@ -8,9 +8,12 @@ export interface RosterUser {
   spectating: boolean;
 }
 
+export type TicketFields = Pick<Ticket, 'title' | 'description'>;
+
 export interface Ticket {
   type: TicketType;
-  content: string;
+  title: string;
+  description: string;
 }
 
 export interface TicketResult {
@@ -46,7 +49,7 @@ export type ClientMessage =
   | { type: 'reveal' }
   | { type: 'reset' }
   | { type: 'addTicket'; ticket: Ticket }
-  | { type: 'editTicket'; ticketId: string; content: string; ticketType?: TicketType }
+  | { type: 'editTicket'; ticketId: string; title: string; description: string; ticketType?: TicketType }
   | { type: 'removeTicket'; ticketId: string }
   | { type: 'selectTicket'; ticketId: string }
   | { type: 'setSpectating'; spectating: boolean };

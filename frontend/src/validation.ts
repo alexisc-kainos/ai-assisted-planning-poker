@@ -1,5 +1,6 @@
 export const MAX_NAME_LENGTH = 32;
-export const MAX_TICKET_LENGTH = 500;
+export const MAX_TICKET_TITLE_LENGTH = 100;
+export const MAX_TICKET_DESCRIPTION_LENGTH = 500;
 export const MAX_TICKETS = 10;
 
 export function nameError(name: string): string | null {
@@ -9,9 +10,16 @@ export function nameError(name: string): string | null {
   return null;
 }
 
-export function ticketError(content: string): string | null {
-  const trimmed = content.trim();
-  if (!trimmed) return 'Ticket text is required';
-  if (Array.from(trimmed).length > MAX_TICKET_LENGTH) return `Ticket must be ${MAX_TICKET_LENGTH} characters or fewer`;
+export function ticketTitleError(title: string): string | null {
+  const trimmed = title.trim();
+  if (!trimmed) return 'Title is required';
+  if (Array.from(trimmed).length > MAX_TICKET_TITLE_LENGTH) return `Title must be ${MAX_TICKET_TITLE_LENGTH} characters or fewer`;
+  return null;
+}
+
+export function ticketDescriptionError(description: string): string | null {
+  if (Array.from(description.trim()).length > MAX_TICKET_DESCRIPTION_LENGTH) {
+    return `Description must be ${MAX_TICKET_DESCRIPTION_LENGTH} characters or fewer`;
+  }
   return null;
 }

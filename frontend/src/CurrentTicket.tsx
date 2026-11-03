@@ -16,8 +16,9 @@ export function CurrentTicket({ tickets, activeTicketId, isHost }: CurrentTicket
       <section className="current-ticket" aria-label="Current ticket">
         <span className="badge">{TYPE_LABELS[active.type]}</span>
         <p className="now-voting">
-          <strong>Now voting:</strong> <span className="now-voting-text">{active.content}</span>
+          <strong>Now voting:</strong> {active.title}
         </p>
+        {active.description && <p className="now-voting-description">{active.description}</p>}
       </section>
     );
   }

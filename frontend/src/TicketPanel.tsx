@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
-import type { RoomTicket, TicketType } from './types';
-import { MAX_TICKETS, ticketError } from './validation';
+import type { RoomTicket, TicketFields, TicketType } from './types';
+import { MAX_TICKETS, ticketDescriptionError, ticketTitleError } from './validation';
 import { VoteResults } from './VoteResults';
 
 export const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike' };
@@ -9,8 +9,8 @@ interface TicketPanelProps {
   tickets: RoomTicket[];
   activeTicketId: string | null;
   isHost: boolean;
-  onAdd: (content: string, type: TicketType) => void;
-  onEdit: (ticketId: string, content: string, type: TicketType) => void;
+  onAdd: (fields: TicketFields, type: TicketType) => void;
+  onEdit: (ticketId: string, fields: TicketFields, type: TicketType) => void;
   onRemove: (ticketId: string) => void;
   onSelect: (ticketId: string) => void;
 }
@@ -32,55 +32,75 @@ function TicketTypeOptions({ value, onChange }: { value: TicketType; onChange: (
   );
 }
 
-interface TicketTextFormProps {
-  label: string;
+interface TicketFieldsFormProps {
+  labels: { title: string; description: string };
   submitLabel: string;
-  initial?: string;
+  initial?: TicketFields;
   disabled?: boolean;
-  onSubmit: (content: string) => void;
+  onSubmit: (fields: TicketFields) => void;
   children?: ReactNode;
 }
 
-function TicketTextForm({ label, submitLabel, initial = '', disabled, onSubmit, children }: TicketTextFormProps) {
-  const [content, setContent] = useState(initial);
+function TicketFieldsForm({ labels, submitLabel, initial, disabled, onSubmit, children }: TicketFieldsFormProps) {
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [touched, setTouched] = useState(false);
-  const contentId = useId();
-  const errorId = useId();
+  const titleId = useId();
+  const titleErrorId = useId();
+  const descriptionId = useId();
+  const descriptionErrorId = useId();
 
-  const error = ticketError(content);
-  const showError = touched && error;
+  const titleError = ticketTitleError(title);
+  const descriptionError = ticketDescriptionError(description);
+  const showTitleError = touched && titleError;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setTouched(true);
-    if (error || disabled) return;
-    onSubmit(content.trim());
+    if (titleError || descriptionError || disabled) return;
+    onSubmit({ title: title.trim(), description: description.trim() });
   };
 
   return (
     <form className="ticket-form" onSubmit={submit} noValidate>
       <div className="field">
-        <label htmlFor={contentId}>{label}</label>
-        <textarea
-          id={contentId}
-          rows={3}
-          value={content}
-          aria-invalid={showError ? true : undefined}
-          aria-describedby={showError ? errorId : undefined}
+        <label htmlFor={titleId}>{labels.title}</label>
+        <input
+          id={titleId}
+          type="text"
+          value={title}
+          aria-invalid={showTitleError ? true : undefined}
+          aria-describedby={showTitleError ? titleErrorId : undefined}
           onChange={(event) => {
-            setContent(event.target.value);
+            setTitle(event.target.value);
             setTouched(true);
           }}
           onBlur={() => setTouched(true)}
         />
-        {showError && (
-          <p id={errorId} className="field-error" role="alert">
-            {error}
+        {showTitleError && (
+          <p id={titleErrorId} className="field-error" role="alert">
+            {titleError}
+          </p>
+        )}
+      </div>
+      <div className="field">
+        <label htmlFor={descriptionId}>{labels.description}</label>
+        <textarea
+          id={descriptionId}
+          rows={3}
+          value={description}
+          aria-invalid={descriptionError ? true : undefined}
+          aria-describedby={descriptionError ? descriptionErrorId : undefined}
+          onChange={(event) => setDescription(event.target.value)}
+        />
+        {descriptionError && (
+          <p id={descriptionErrorId} className="field-error" role="alert">
+            {descriptionError}
           </p>
         )}
       </div>
       <div className="vote-actions">
-        <button type="submit" className="primary" disabled={!!error || disabled}>
+        <button type="submit" className="primary" disabled={!!titleError || !!descriptionError || disabled}>
           {submitLabel}
         </button>
         {children}
@@ -89,32 +109,35 @@ function TicketTextForm({ label, submitLabel, initial = '', disabled, onSubmit, 
   );
 }
 
+const sameFields = (ticket: TicketFields, fields: TicketFields) =>
+  ticket.title === fields.title && ticket.description === fields.description;
+
 function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: TicketPanelProps['onAdd'] }) {
   const [type, setType] = useState<TicketType>('story');
-  const [pending, setPending] = useState<{ content: string; knownIds: Set<string> } | null>(null);
+  const [pending, setPending] = useState<{ fields: TicketFields; knownIds: Set<string> } | null>(null);
   const [formKey, setFormKey] = useState(0);
   const full = tickets.length >= MAX_TICKETS;
 
   // Clear the draft only once the server broadcasts the new ticket, so a rejection keeps it.
   useEffect(() => {
     if (!pending) return;
-    if (tickets.some((ticket) => !pending.knownIds.has(ticket.id) && ticket.content === pending.content)) {
+    if (tickets.some((ticket) => !pending.knownIds.has(ticket.id) && sameFields(ticket, pending.fields))) {
       setPending(null);
       setFormKey((key) => key + 1);
     }
   }, [tickets, pending]);
 
-  const add = (content: string) => {
-    setPending({ content, knownIds: new Set(tickets.map((ticket) => ticket.id)) });
-    onAdd(content, type);
+  const add = (fields: TicketFields) => {
+    setPending({ fields, knownIds: new Set(tickets.map((ticket) => ticket.id)) });
+    onAdd(fields, type);
   };
 
   return (
     <div className="ticket-add">
       <TicketTypeOptions value={type} onChange={setType} />
-      <TicketTextForm
+      <TicketFieldsForm
         key={formKey}
-        label="What are we estimating?"
+        labels={{ title: 'Ticket title', description: 'Ticket description (optional)' }}
         submitLabel="Add ticket"
         disabled={full}
         onSubmit={add}
@@ -136,17 +159,17 @@ interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTick
 function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: TicketItemProps) {
   const [editing, setEditing] = useState(false);
   const [editType, setEditType] = useState<TicketType>(ticket.type);
-  const [pendingEdit, setPendingEdit] = useState<{ content: string; type: TicketType } | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<(TicketFields & { type: TicketType }) | null>(null);
   const [showResults, setShowResults] = useState(false);
   const resultsId = useId();
 
   // Close the editor only once the server broadcasts the saved edit, so a rejection keeps the draft.
   useEffect(() => {
-    if (pendingEdit !== null && ticket.content === pendingEdit.content && ticket.type === pendingEdit.type) {
+    if (pendingEdit !== null && sameFields(ticket, pendingEdit) && ticket.type === pendingEdit.type) {
       setPendingEdit(null);
       setEditing(false);
     }
-  }, [ticket.content, ticket.type, pendingEdit]);
+  }, [ticket, pendingEdit]);
 
   const startEditing = () => {
     setEditType(ticket.type);
@@ -159,7 +182,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
   };
 
   const remove = () => {
-    if (window.confirm(`Remove this ticket?\n\n${ticket.content}`)) onRemove(ticket.id);
+    if (window.confirm(`Remove this ticket?\n\n${ticket.title}`)) onRemove(ticket.id);
   };
 
   return (
@@ -177,22 +200,27 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
               Changing the type clears this ticket's votes and results.
             </p>
           )}
-          <TicketTextForm
-            label="Edit ticket text"
+          <TicketFieldsForm
+            labels={{ title: 'Edit title', description: 'Edit description (optional)' }}
             submitLabel="Save"
-            initial={ticket.content}
-            onSubmit={(content) => {
-              setPendingEdit({ content, type: editType });
-              onEdit(ticket.id, content, editType);
+            initial={ticket}
+            onSubmit={(fields) => {
+              setPendingEdit({ ...fields, type: editType });
+              onEdit(ticket.id, fields, editType);
             }}
           >
             <button type="button" onClick={stopEditing}>
               Cancel
             </button>
-          </TicketTextForm>
+          </TicketFieldsForm>
         </>
       ) : (
-        <p className="ticket-content">{ticket.content}</p>
+        <div className="ticket-content">
+          <p className="ticket-title">
+            <strong>{ticket.title}</strong>
+          </p>
+          {ticket.description && <p className="ticket-description">{ticket.description}</p>}
+        </div>
       )}
       <div className="vote-actions">
         {isHost && !active && (

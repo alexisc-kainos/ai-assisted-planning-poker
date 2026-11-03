@@ -104,41 +104,55 @@ describe('parseClientMessage', () => {
     ['missing ticket', '{"type":"addTicket"}'],
     ['null ticket', addTicket(null)],
     ['array ticket', addTicket([])],
-    ['epic type', addTicket({ type: 'epic', content: 'Login' })],
-    ['missing type', addTicket({ content: 'Login' })],
-    ['numeric content', addTicket({ type: 'story', content: 5 })],
-    ['blank content', addTicket({ type: 'story', content: ' \n ' })],
-    ['501 chars', addTicket({ type: 'story', content: 'x'.repeat(501) })],
+    ['epic type', addTicket({ type: 'epic', title: 'Login', description: '' })],
+    ['missing type', addTicket({ title: 'Login', description: '' })],
+    ['missing title', addTicket({ type: 'story', description: '' })],
+    ['numeric title', addTicket({ type: 'story', title: 5, description: '' })],
+    ['blank title', addTicket({ type: 'story', title: ' \t ', description: '' })],
+    ['title with a line break', addTicket({ type: 'story', title: 'Login\npage', description: '' })],
+    ['101-char title', addTicket({ type: 'story', title: 'x'.repeat(101), description: '' })],
+    ['missing description', addTicket({ type: 'story', title: 'Login' })],
+    ['null description', addTicket({ type: 'story', title: 'Login', description: null })],
+    ['501-char description', addTicket({ type: 'story', title: 'Login', description: 'x'.repeat(501) })],
+    ['legacy content only', addTicket({ type: 'story', content: 'Login' })],
   ])('rejects addTicket with %s', (_label, raw) => {
     expect(parseClientMessage(raw)).toEqual({ ok: false, error: 'Invalid addTicket message' });
   });
 
-  it('accepts addTicket, trimming content and counting emoji as one char', () => {
-    expect(parseClientMessage(addTicket({ type: 'story', content: '  Login\npage  ' }))).toEqual({
+  it('accepts addTicket, trimming both fields and counting emoji as one char', () => {
+    expect(
+      parseClientMessage(addTicket({ type: 'story', title: '  Login page  ', description: '  As a user\nI log in  ' })),
+    ).toEqual({
       ok: true,
-      message: { type: 'addTicket', ticket: { type: 'story', content: 'Login\npage' } },
+      message: { type: 'addTicket', ticket: { type: 'story', title: 'Login page', description: 'As a user\nI log in' } },
     });
-    const emoji = '🐧'.repeat(500);
-    expect(parseClientMessage(addTicket({ type: 'story', content: emoji }))).toMatchObject({ ok: true });
+    const ticket = { type: 'story', title: '🐧'.repeat(100), description: '🐧'.repeat(500) };
+    expect(parseClientMessage(addTicket(ticket))).toMatchObject({ ok: true });
   });
 
-  it('accepts a spike addTicket', () => {
-    expect(parseClientMessage(addTicket({ type: 'spike', content: 'Investigate' }))).toEqual({
+  it('accepts a 1-char title with an empty description, trimming a blank one to empty', () => {
+    expect(parseClientMessage(addTicket({ type: 'spike', title: 'X', description: '   ' }))).toEqual({
       ok: true,
-      message: { type: 'addTicket', ticket: { type: 'spike', content: 'Investigate' } },
+      message: { type: 'addTicket', ticket: { type: 'spike', title: 'X', description: '' } },
     });
   });
+
+  const edit = { ticketId: 'ticket-1', title: 'Login', description: '' };
 
   it.each([
-    ['missing ticketId', { content: 'Login' }],
-    ['numeric ticketId', { ticketId: 1, content: 'Login' }],
-    ['empty ticketId', { ticketId: '', content: 'Login' }],
-    ['ticketId over 64 chars', { ticketId: 't'.repeat(65), content: 'Login' }],
-    ['missing content', { ticketId: 'ticket-1' }],
-    ['blank content', { ticketId: 'ticket-1', content: '   ' }],
-    ['501 chars', { ticketId: 'ticket-1', content: 'x'.repeat(501) }],
-    ['unknown ticketType', { ticketId: 'ticket-1', content: 'Login', ticketType: 'epic' }],
-    ['null ticketType', { ticketId: 'ticket-1', content: 'Login', ticketType: null }],
+    ['missing ticketId', { ...edit, ticketId: undefined }],
+    ['numeric ticketId', { ...edit, ticketId: 1 }],
+    ['empty ticketId', { ...edit, ticketId: '' }],
+    ['ticketId over 64 chars', { ...edit, ticketId: 't'.repeat(65) }],
+    ['missing title', { ...edit, title: undefined }],
+    ['blank title', { ...edit, title: '   ' }],
+    ['title with a line break', { ...edit, title: 'A\r\nB' }],
+    ['101-char title', { ...edit, title: 'x'.repeat(101) }],
+    ['missing description', { ...edit, description: undefined }],
+    ['501-char description', { ...edit, description: 'x'.repeat(501) }],
+    ['legacy content only', { ticketId: 'ticket-1', content: 'Login' }],
+    ['unknown ticketType', { ...edit, ticketType: 'epic' }],
+    ['null ticketType', { ...edit, ticketType: null }],
   ])('rejects editTicket with %s', (_label, fields) => {
     expect(parseClientMessage(JSON.stringify({ type: 'editTicket', ...fields }))).toEqual({
       ok: false,
@@ -146,18 +160,19 @@ describe('parseClientMessage', () => {
     });
   });
 
-  it('accepts editTicket, trimming content', () => {
-    expect(parseClientMessage(JSON.stringify({ type: 'editTicket', ticketId: 'ticket-1', content: ' SSO ' }))).toEqual({
+  it('accepts editTicket, trimming both fields', () => {
+    const raw = JSON.stringify({ type: 'editTicket', ticketId: 'ticket-1', title: ' SSO ', description: ' Use Okta ' });
+    expect(parseClientMessage(raw)).toEqual({
       ok: true,
-      message: { type: 'editTicket', ticketId: 'ticket-1', content: 'SSO' },
+      message: { type: 'editTicket', ticketId: 'ticket-1', title: 'SSO', description: 'Use Okta' },
     });
   });
 
   it.each(['story', 'spike'])('accepts editTicket with ticketType %s', (ticketType) => {
-    const raw = JSON.stringify({ type: 'editTicket', ticketId: 'ticket-1', content: 'SSO', ticketType });
+    const raw = JSON.stringify({ type: 'editTicket', ...edit, ticketType });
     expect(parseClientMessage(raw)).toEqual({
       ok: true,
-      message: { type: 'editTicket', ticketId: 'ticket-1', content: 'SSO', ticketType },
+      message: { type: 'editTicket', ...edit, ticketType },
     });
   });
 
@@ -189,7 +204,7 @@ describe('parseClientMessage', () => {
   });
 
   it('no longer accepts setTicket', () => {
-    const raw = JSON.stringify({ type: 'setTicket', ticket: { type: 'story', content: 'Login' } });
+    const raw = JSON.stringify({ type: 'setTicket', ticket: { type: 'story', title: 'Login', description: '' } });
     expect(parseClientMessage(raw)).toEqual({ ok: false, error: 'Unknown message type' });
   });
 });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_URL, DEFAULT_DECK, WS_URL } from './config';
 import { isCreator } from './room';
-import type { ClientMessage, RoomState, RoomStatus, ServerMessage, TicketType } from './types';
+import type { ClientMessage, RoomState, RoomStatus, ServerMessage, TicketFields, TicketType } from './types';
 
 export type JoinStatus = 'idle' | 'checking' | 'connecting' | 'joined' | 'reconnecting' | 'full' | 'error';
 
@@ -119,13 +119,13 @@ export function useRoom(roomId: string) {
   const reset = useCallback(() => send({ type: 'reset' }), [send]);
 
   const addTicket = useCallback(
-    (content: string, type: TicketType) => send({ type: 'addTicket', ticket: { type, content } }),
+    (fields: TicketFields, type: TicketType) => send({ type: 'addTicket', ticket: { type, ...fields } }),
     [send],
   );
 
   const editTicket = useCallback(
-    (ticketId: string, content: string, ticketType: TicketType) =>
-      send({ type: 'editTicket', ticketId, content, ticketType }),
+    (ticketId: string, fields: TicketFields, ticketType: TicketType) =>
+      send({ type: 'editTicket', ticketId, ...fields, ticketType }),
     [send],
   );
 

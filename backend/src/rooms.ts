@@ -126,11 +126,12 @@ export class Room {
     return null;
   }
 
-  editTicket(userId: string, ticketId: string, content: string, type?: TicketType): string | null {
+  editTicket(userId: string, ticketId: string, title: string, description: string, type?: TicketType): string | null {
     if (userId !== this.hostId) return 'Only the host can edit tickets';
     const ticket = this.tickets.find((existing) => existing.id === ticketId);
     if (!ticket) return 'Ticket not found';
-    ticket.content = content;
+    ticket.title = title;
+    ticket.description = description;
     if (type && type !== ticket.type) {
       ticket.type = type;
       // Votes and results in the old deck's units are meaningless after a type change.

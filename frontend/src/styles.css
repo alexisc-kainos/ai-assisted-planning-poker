@@ -476,8 +476,12 @@ textarea[aria-invalid='true'] {
   overflow-wrap: anywhere;
 }
 
-.now-voting-text {
+.now-voting-description {
+  max-width: 70ch;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 1.05rem;
 }
 
 .now-voting strong {
@@ -778,9 +782,19 @@ textarea[aria-invalid='true'] {
 }
 
 .ticket-content {
-  white-space: pre-wrap;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
   overflow-wrap: anywhere;
+}
+
+.ticket-title {
   font-size: 1.05rem;
+}
+
+.ticket-description {
+  white-space: pre-wrap;
+  color: var(--muted);
 }
 
 .ticket-list {

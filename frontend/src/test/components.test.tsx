@@ -174,15 +174,19 @@ describe('VoteDeck', () => {
 describe('TicketPanel', () => {
   const ticket = (
     id: string,
-    content: string,
+    title: string,
     result: RoomTicket['result'] = null,
     type: RoomTicket['type'] = 'story',
+    description = '',
   ): RoomTicket => ({
     id,
     type,
-    content,
+    title,
+    description,
     result,
   });
+  const TITLE = 'Ticket title';
+  const DESCRIPTION = 'Ticket description (optional)';
 
   const renderPanel = (props: Partial<Parameters<typeof TicketPanel>[0]> = {}) => {
     const handlers = { onAdd: vi.fn(), onEdit: vi.fn(), onRemove: vi.fn(), onSelect: vi.fn() };
@@ -202,9 +206,18 @@ describe('TicketPanel', () => {
     const user = userEvent.setup();
     const submit = screen.getByRole('button', { name: 'Add ticket' });
     expect(submit).toBeDisabled();
-    await user.type(screen.getByLabelText('What are we estimating?'), '  Login{Enter}page  ');
+    await user.type(screen.getByLabelText(TITLE), '  Login page  ');
+    await user.type(screen.getByLabelText(DESCRIPTION), '  As a user{Enter}I log in  ');
     await user.click(submit);
-    expect(onAdd).toHaveBeenCalledWith('Login\npage', 'story');
+    expect(onAdd).toHaveBeenCalledWith({ title: 'Login page', description: 'As a user\nI log in' }, 'story');
+  });
+
+  it('lets the host add a ticket with no description', async () => {
+    const { onAdd } = renderPanel();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(TITLE), 'Logout');
+    await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+    expect(onAdd).toHaveBeenCalledWith({ title: 'Logout', description: '' }, 'story');
   });
 
   it('lets the host add a spike ticket', async () => {
@@ -212,39 +225,60 @@ describe('TicketPanel', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('radio', { name: 'Spike' }));
     expect(screen.getByRole('radio', { name: 'Spike' })).toBeChecked();
-    await user.type(screen.getByLabelText('What are we estimating?'), 'Investigate SSO');
+    await user.type(screen.getByLabelText(TITLE), 'Investigate SSO');
     await user.click(screen.getByRole('button', { name: 'Add ticket' }));
-    expect(onAdd).toHaveBeenCalledWith('Investigate SSO', 'spike');
+    expect(onAdd).toHaveBeenCalledWith({ title: 'Investigate SSO', description: '' }, 'spike');
   });
 
   it('keeps the add draft until the server broadcasts the new ticket', async () => {
     const existing = ticket('t1', 'Signup');
     const { onAdd, update } = renderPanel({ tickets: [existing] });
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
+    await user.type(screen.getByLabelText(TITLE), 'Signup');
+    await user.type(screen.getByLabelText(DESCRIPTION), 'With email');
     await user.click(screen.getByRole('button', { name: 'Add ticket' }));
-    expect(onAdd).toHaveBeenCalledWith('Signup', 'story');
-    expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+    expect(onAdd).toHaveBeenCalledWith({ title: 'Signup', description: 'With email' }, 'story');
+    expect(screen.getByLabelText(TITLE)).toHaveValue('Signup');
 
-    update({ tickets: [{ ...existing }] });
-    expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+    update({ tickets: [{ ...existing }, ticket('t2', 'Signup')] });
+    expect(screen.getByLabelText(TITLE)).toHaveValue('Signup');
 
-    update({ tickets: [existing, ticket('t2', 'Signup')] });
-    expect(screen.getByLabelText('What are we estimating?')).toHaveValue('');
+    update({ tickets: [existing, ticket('t2', 'Signup'), ticket('t3', 'Signup', null, 'story', 'With email')] });
+    expect(screen.getByLabelText(TITLE)).toHaveValue('');
+    expect(screen.getByLabelText(DESCRIPTION)).toHaveValue('');
   });
 
-  it('validates blank and over-long ticket text', async () => {
+  it('validates a blank or over-long title', async () => {
     renderPanel();
     const user = userEvent.setup();
-    const textarea = screen.getByLabelText('What are we estimating?');
-    await user.type(textarea, '   ');
-    expect(screen.getByRole('alert')).toHaveTextContent('Ticket text is required');
-    expect(textarea).toHaveAttribute('aria-invalid', 'true');
+    const title = screen.getByLabelText(TITLE);
+    await user.type(title, '   ');
+    expect(screen.getByRole('alert')).toHaveTextContent('Title is required');
+    expect(title).toHaveAttribute('aria-invalid', 'true');
 
-    await user.clear(textarea);
-    await user.click(textarea);
-    await user.paste('x'.repeat(501));
-    expect(screen.getByRole('alert')).toHaveTextContent('Ticket must be 500 characters or fewer');
+    await user.clear(title);
+    await user.click(title);
+    await user.paste('x'.repeat(101));
+    expect(screen.getByRole('alert')).toHaveTextContent('Title must be 100 characters or fewer');
+    expect(screen.getByRole('button', { name: 'Add ticket' })).toBeDisabled();
+
+    await user.clear(title);
+    await user.paste('x'.repeat(100));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add ticket' })).toBeEnabled();
+  });
+
+  it('validates an over-long description', async () => {
+    renderPanel();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(TITLE), 'Login');
+    const description = screen.getByLabelText(DESCRIPTION);
+    await user.click(description);
+    await user.paste('x'.repeat(500));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await user.paste('x');
+    expect(screen.getByRole('alert')).toHaveTextContent('Description must be 500 characters or fewer');
+    expect(description).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByRole('button', { name: 'Add ticket' })).toBeDisabled();
   });
 
@@ -254,7 +288,7 @@ describe('TicketPanel', () => {
     });
     expect(screen.getByRole('heading', { name: 'Tickets' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent("You've reached the limit of 10 tickets.");
-    await userEvent.setup().type(screen.getByLabelText('What are we estimating?'), 'One more');
+    await userEvent.setup().type(screen.getByLabelText(TITLE), 'One more');
     expect(screen.getByRole('button', { name: 'Add ticket' })).toBeDisabled();
     expect(onAdd).not.toHaveBeenCalled();
   });
@@ -275,24 +309,31 @@ describe('TicketPanel', () => {
   });
 
   it('edits a ticket inline, including the active one, keeping the draft until the server confirms', async () => {
-    const { onEdit, update } = renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: 't1' });
+    const { onEdit, update } = renderPanel({
+      tickets: [ticket('t1', 'One', null, 'story', 'Old detail')],
+      activeTicketId: 't1',
+    });
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Edit title')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
-    const editor = screen.getByLabelText('Edit ticket text');
+    expect(screen.getByLabelText('Edit description (optional)')).toHaveValue('Old detail');
+    const editor = screen.getByLabelText('Edit title');
     await user.clear(editor);
     await user.type(editor, ' One with SSO ');
+    await user.clear(screen.getByLabelText('Edit description (optional)'));
+    await user.type(screen.getByLabelText('Edit description (optional)'), 'Okta only');
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(onEdit).toHaveBeenCalledWith('t1', 'One with SSO', 'story');
-    expect(screen.getByLabelText('Edit ticket text')).toHaveValue(' One with SSO ');
+    expect(onEdit).toHaveBeenCalledWith('t1', { title: 'One with SSO', description: 'Okta only' }, 'story');
+    expect(screen.getByLabelText('Edit title')).toHaveValue(' One with SSO ');
 
-    update({ tickets: [ticket('t1', 'One with SSO')], activeTicketId: 't1' });
-    expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
-    expect(screen.getByText('One with SSO', { selector: 'li p' })).toBeInTheDocument();
+    update({ tickets: [ticket('t1', 'One with SSO', null, 'story', 'Okta only')], activeTicketId: 't1' });
+    expect(screen.queryByLabelText('Edit title')).not.toBeInTheDocument();
+    expect(screen.getByText('One with SSO', { selector: 'li strong' })).toBeInTheDocument();
+    expect(screen.getByText('Okta only', { selector: 'li p' })).toBeInTheDocument();
   });
 
   it('changes a ticket type from the edit form, warning that votes and results are cleared', async () => {
@@ -307,29 +348,31 @@ describe('TicketPanel', () => {
     await user.click(within(item()).getByRole('radio', { name: 'Spike' }));
     expect(screen.getByText("Changing the type clears this ticket's votes and results.")).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(onEdit).toHaveBeenCalledWith('t1', 'One', 'spike');
-    expect(screen.getByLabelText('Edit ticket text')).toBeInTheDocument();
+    expect(onEdit).toHaveBeenCalledWith('t1', { title: 'One', description: '' }, 'spike');
+    expect(screen.getByLabelText('Edit title')).toBeInTheDocument();
 
     update({ tickets: [ticket('t1', 'One', null, 'spike')], activeTicketId: 't1' });
-    expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Edit title')).not.toBeInTheDocument();
     expect(within(item()).getByText('Spike')).toBeInTheDocument();
   });
 
   it('removes a ticket only after the host confirms', async () => {
     const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
     vi.stubGlobal('confirm', confirm);
-    const { onRemove } = renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: 't1' });
+    const { onRemove } = renderPanel({ tickets: [ticket('t1', 'One', null, 'story', 'Detail')], activeTicketId: 't1' });
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(confirm).toHaveBeenCalledWith('Remove this ticket?\n\nOne');
     expect(onRemove).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Remove' }));
     expect(onRemove).toHaveBeenCalledWith('t1');
   });
 
   it('shows a non-host the list as read-only text with no management controls', () => {
-    renderPanel({ isHost: false, tickets: [ticket('t1', '<b>Login</b>')], activeTicketId: null });
-    expect(screen.getByText('<b>Login</b>')).toBeInTheDocument();
+    renderPanel({ isHost: false, tickets: [ticket('t1', '<b>Login</b>', null, 'story', '<i>As a user</i>')], activeTicketId: null });
+    expect(screen.getByText('<b>Login</b>', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText('<i>As a user</i>')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -367,12 +410,30 @@ describe('TicketPanel', () => {
 });
 
 describe('CurrentTicket', () => {
-  const ticket = (id: string, content: string, type: RoomTicket['type'] = 'story'): RoomTicket => ({ id, content, type, result: null });
+  const ticket = (id: string, title: string, type: RoomTicket['type'] = 'story', description = ''): RoomTicket => ({
+    id,
+    title,
+    description,
+    type,
+    result: null,
+  });
 
   it('shows the active ticket with its type', () => {
     render(<CurrentTicket tickets={[ticket('t1', 'Login page', 'spike')]} activeTicketId="t1" isHost={false} />);
     expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
     expect(screen.getByRole('region', { name: 'Current ticket' })).toHaveTextContent('Spike');
+    expect(screen.getByRole('region', { name: 'Current ticket' }).querySelectorAll('p')).toHaveLength(1);
+  });
+
+  it('shows the active ticket description under its title', () => {
+    render(
+      <CurrentTicket
+        tickets={[ticket('t1', 'Login page', 'story', 'As a user\nI log in')]}
+        activeTicketId="t1"
+        isHost={false}
+      />,
+    );
+    expect(screen.getByText(/As a user/)).toHaveTextContent('As a user I log in');
   });
 
   it('tells a non-host when the host has not chosen a ticket', () => {
