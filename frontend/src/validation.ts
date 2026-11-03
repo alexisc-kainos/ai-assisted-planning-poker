@@ -14,6 +14,7 @@ export function ticketTitleError(title: string): string | null {
   const trimmed = title.trim();
   if (!trimmed) return 'Title is required';
   if (Array.from(trimmed).length > MAX_TICKET_TITLE_LENGTH) return `Title must be ${MAX_TICKET_TITLE_LENGTH} characters or fewer`;
+  if (/[\r\n\u2028\u2029]/.test(trimmed)) return 'Title must not contain line breaks';
   return null;
 }
 
