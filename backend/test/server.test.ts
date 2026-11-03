@@ -3,7 +3,7 @@ import { connect as connectTcp } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Config } from '../src/config.js';
 import type { AppServer } from '../src/server.js';
-import { connect, rejectedStatus, startServer, type Message } from './helpers.js';
+import { connect, rejectedStatus, startServer, type Message, type TestClient } from './helpers.js';
 
 let app: AppServer | undefined;
 let port = 0;
@@ -18,6 +18,7 @@ afterEach(async () => {
 });
 
 const ROOM = 'xk29-4plm';
+const vote = (value: string, round = 0) => ({ type: 'vote', value, round });
 const roomStatus = async (id: string, headers: Record<string, string> = {}) =>
   fetch(`http://127.0.0.1:${port}/rooms/${id}`, { headers });
 
@@ -33,7 +34,9 @@ describe('create and join handshake', () => {
       hostId: first.userId,
       revealed: false,
       deck: 'fibonacci',
-      ticket: null,
+      tickets: [],
+      activeTicketId: null,
+      round: 0,
       users: [{ id: first.userId, name: 'Alice', avatar: 'capybara', hasVoted: false }],
       votes: null,
       myVote: null,
@@ -247,7 +250,7 @@ describe('voting, reveal and reset', () => {
   it('shows who voted without leaking values, then reveals them', async () => {
     const { host, guest, hostId, guestId } = await twoUsers();
 
-    guest.send({ type: 'vote', value: '5' });
+    guest.send(vote('5'));
     const afterVote = await host.next('state');
     expect(afterVote.votes).toBeNull();
     expect(afterVote.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
@@ -262,7 +265,7 @@ describe('voting, reveal and reset', () => {
     expect(revealed.votes).not.toHaveProperty(hostId);
     await host.next('state');
 
-    guest.send({ type: 'vote', value: '8' });
+    guest.send(vote('8'));
     expect((await guest.next('error')).message).toBe('Voting is locked until reset');
     host.send({ type: 'reveal' });
     expect((await host.next('error')).message).toBe('Votes are already revealed');
@@ -277,11 +280,16 @@ describe('voting, reveal and reset', () => {
 
     host.send({ type: 'reset' });
     expect((await host.next('error')).message).toBe('Votes are already reset');
+
+    guest.send(vote('8'));
+    expect((await guest.next('error')).message).toBe('Vote was for a previous round');
+    guest.send(vote('8', reset.round));
+    expect((await guest.next('state')).myVote).toBe('8');
   });
 
   it('removes a disconnected voter from the vote map', async () => {
     const { host, guest, guestId } = await twoUsers();
-    guest.send({ type: 'vote', value: '3' });
+    guest.send(vote('3'));
     await host.next('state');
     await guest.close();
     await host.next('state');
@@ -297,7 +305,9 @@ describe('voting, reveal and reset', () => {
     expect((await host.next('error')).message).toBe('Malformed message');
     host.send({ type: 'shout' });
     expect((await host.next('error')).message).toBe('Unknown message type');
-    host.send({ type: 'vote', value: 5 });
+    host.send({ type: 'vote', value: 5, round: 0 });
+    expect((await host.next('error')).message).toBe('Invalid vote message');
+    host.send({ type: 'vote', value: '5' });
     expect((await host.next('error')).message).toBe('Invalid vote message');
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -307,7 +317,7 @@ describe('voting, reveal and reset', () => {
 
   it.each(['1', '2', '3', '5', '8', '13', '20', '☕'])('accepts the story-deck vote %s', async (value) => {
     const { host, guest, guestId } = await twoUsers();
-    guest.send({ type: 'vote', value });
+    guest.send(vote(value));
     await host.next('state');
     host.send({ type: 'reveal' });
     expect((await host.next('state')).votes).toEqual({ [guestId]: value });
@@ -316,7 +326,7 @@ describe('voting, reveal and reset', () => {
 
   it('broadcasts a vote as hasVoted only, telling just the voter their own value', async () => {
     const { host, guest, guestId } = await twoUsers();
-    guest.send({ type: 'vote', value: '☕' });
+    guest.send(vote('☕'));
     const [hostView, guestView] = [await host.next('state'), await guest.next('state')];
     for (const view of [hostView, guestView]) {
       expect(view.votes).toBeNull();
@@ -331,11 +341,11 @@ describe('voting, reveal and reset', () => {
     await start({ rateLimitMax: 2, rateLimitWindowMs: 60_000 });
     const client = await connect(port, { room: ROOM, name: 'Voter' });
     await client.next('state');
-    client.send({ type: 'vote', value: '5' });
+    client.send(vote('5'));
     expect((await client.next('state')).myVote).toBe('5');
-    client.send({ type: 'vote', value: '8' });
+    client.send(vote('8'));
     expect((await client.next('state')).myVote).toBe('8');
-    client.send({ type: 'vote', value: '13' });
+    client.send(vote('13'));
     expect((await client.next('error')).message).toBe('Rate limit exceeded');
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(client.messages.filter((m) => m.type === 'state')).toEqual([]);
@@ -343,7 +353,7 @@ describe('voting, reveal and reset', () => {
 
   it('clears myVote on reset', async () => {
     const { host, guest } = await twoUsers();
-    guest.send({ type: 'vote', value: '3' });
+    guest.send(vote('3'));
     await host.next('state');
     expect((await guest.next('state')).myVote).toBe('3');
     host.send({ type: 'reset' });
@@ -353,7 +363,7 @@ describe('voting, reveal and reset', () => {
   it('keeps only the latest vote when a participant changes their mind', async () => {
     const { host, guest, guestId } = await twoUsers();
     for (const value of ['3', '8', '13']) {
-      guest.send({ type: 'vote', value });
+      guest.send(vote(value));
       expect((await host.next('state')).votes).toBeNull();
     }
     host.send({ type: 'reveal' });
@@ -362,100 +372,257 @@ describe('voting, reveal and reset', () => {
 
   it('does not require anyone to vote', async () => {
     const { host, guest } = await twoUsers();
-    host.send({ type: 'setTicket', ticket: { type: 'story', content: 'Login page' } });
+    host.send({ type: 'addTicket', ticket: { type: 'story', content: 'Login page' } });
     expect((await guest.next('state')).users.every((u: Message) => !u.hasVoted)).toBe(true);
     await host.next('state');
     host.send({ type: 'reveal' });
     expect((await guest.next('state')).votes).toEqual({});
   });
 
-  it('accepts a vote before any ticket is set', async () => {
+  it('accepts a vote before any ticket is active', async () => {
     const { host, guest, guestId } = await twoUsers();
-    guest.send({ type: 'vote', value: '5' });
+    guest.send(vote('5'));
     const state = await host.next('state');
-    expect(state.ticket).toBeNull();
+    expect(state.activeTicketId).toBeNull();
     expect(state.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
   });
 });
 
-describe('story ticket', () => {
+describe('ticket list', () => {
+  let round = 0;
+
   async function twoUsers() {
+    round = 0;
     await start();
     const host = await connect(port, { room: ROOM, name: 'Host' });
-    await host.next('welcome');
-    const guest = await connect(port, { room: ROOM, name: 'Guest' });
+    const { userId: hostId } = await host.next('welcome');
+    const guest = await connect(port, { room: ROOM, name: 'Guest', avatar: 'penguin' });
     const { userId: guestId } = await guest.next('welcome');
     await host.settledState();
     await guest.settledState();
-    return { host, guest, guestId };
+    return { host, guest, hostId, guestId };
   }
 
-  const setTicket = (content: unknown, type: unknown = 'story') => ({ type: 'setTicket', ticket: { type, content } });
+  const addTicket = (content: unknown, type: unknown = 'story') => ({ type: 'addTicket', ticket: { type, content } });
 
-  it('lets the host set a trimmed story ticket that everyone, including late joiners, sees', async () => {
+  async function act(sender: TestClient, others: TestClient[], message: unknown): Promise<Message> {
+    sender.send(message);
+    const state = await sender.next('state');
+    for (const other of others) await other.next('state');
+    round = state.round;
+    return state;
+  }
+
+  async function addTickets(host: TestClient, guest: TestClient, ...contents: string[]): Promise<string[]> {
+    let state: Message = {};
+    for (const content of contents) state = await act(host, [guest], addTicket(content));
+    return state.tickets.map((t: Message) => t.id);
+  }
+
+  it('lets the host add trimmed tickets in order without activating them, visible to everyone', async () => {
     const { host, guest } = await twoUsers();
-    host.send(setTicket('  As a user\nI want to log in  '));
-    const expected = { type: 'story', content: 'As a user\nI want to log in' };
-    expect((await guest.next('state')).ticket).toEqual(expected);
-    expect((await host.next('state')).ticket).toEqual(expected);
+    host.send(addTicket('  As a user\nI want to log in  '));
+    const guestView = await guest.next('state');
+    await host.next('state');
+    expect(guestView.tickets).toEqual([
+      { id: expect.stringMatching(/^ticket-/), type: 'story', content: 'As a user\nI want to log in', result: null },
+    ]);
+    expect(guestView.activeTicketId).toBeNull();
 
+    await addTickets(host, guest, 'Logout', 'Logout');
     const late = await connect(port, { room: ROOM, name: 'Late' });
-    expect((await late.next('state')).ticket).toEqual(expected);
+    const lateView = await late.next('state');
+    expect(lateView.tickets.map((t: Message) => t.content)).toEqual(['As a user\nI want to log in', 'Logout', 'Logout']);
+    expect(new Set(lateView.tickets.map((t: Message) => t.id)).size).toBe(3);
   });
 
-  it('rejects a non-host setting the ticket without broadcasting', async () => {
+  it.each([
+    ['add', 'addTicket', 'Only the host can add tickets'],
+    ['edit', 'editTicket', 'Only the host can edit tickets'],
+    ['remove', 'removeTicket', 'Only the host can remove tickets'],
+    ['select', 'selectTicket', 'Only the host can select tickets'],
+  ])('rejects a non-host trying to %s a ticket without broadcasting', async (_label, type, error) => {
     const { host, guest } = await twoUsers();
-    guest.send(setTicket('Sneaky'));
-    expect(await guest.next('error')).toEqual({ type: 'error', message: 'Only the host can set the ticket' });
+    const [ticketId] = await addTickets(host, guest, 'Login');
+    guest.send({ type, ticketId, content: 'Sneaky', ticket: { type: 'story', content: 'Sneaky' } });
+    expect(await guest.next('error')).toEqual({ type: 'error', message: error });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(host.messages).toEqual([]);
   });
 
   it.each([
-    ['no ticket', { type: 'setTicket' }],
-    ['ticket not an object', { type: 'setTicket', ticket: 'Login' }],
-    ['spike type', setTicket('Login', 'spike')],
-    ['non-string content', setTicket(42)],
-    ['blank content', setTicket('   ')],
-    ['content over 500 chars', setTicket('x'.repeat(501))],
-  ])('rejects %s with Invalid setTicket message', async (_label, message) => {
+    ['no ticket', { type: 'addTicket' }],
+    ['spike type', addTicket('Login', 'spike')],
+    ['blank content', addTicket('   ')],
+    ['content over 500 chars', addTicket('x'.repeat(501))],
+  ])('rejects %s with Invalid addTicket message', async (_label, message) => {
     const { host } = await twoUsers();
     host.send(message);
-    expect((await host.next('error')).message).toBe('Invalid setTicket message');
+    expect((await host.next('error')).message).toBe('Invalid addTicket message');
   });
 
   it('accepts content of exactly 500 chars', async () => {
     const { host } = await twoUsers();
-    host.send(setTicket('x'.repeat(500)));
-    expect((await host.next('state')).ticket.content).toHaveLength(500);
+    host.send(addTicket('x'.repeat(500)));
+    expect((await host.next('state')).tickets[0].content).toHaveLength(500);
   });
 
-  it('keeps votes when the host edits the ticket', async () => {
-    const { host, guest, guestId } = await twoUsers();
-    host.send(setTicket('Login'));
-    await host.next('state');
-    await guest.next('state');
-    guest.send({ type: 'vote', value: '5' });
-    await host.next('state');
-    await guest.next('state');
+  it('allows 10 tickets, blocks the 11th, and frees a slot on removal', async () => {
+    const { host, guest } = await twoUsers();
+    const ids = await addTickets(host, guest, ...Array.from({ length: 10 }, (_, i) => `Ticket ${i + 1}`));
+    expect(ids).toHaveLength(10);
 
-    host.send(setTicket('Login with SSO'));
-    const state = await guest.next('state');
-    expect(state.ticket.content).toBe('Login with SSO');
+    host.send(addTicket('Ticket 11'));
+    expect((await host.next('error')).message).toBe('A room can have at most 10 tickets');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(guest.messages).toEqual([]);
+
+    await act(host, [guest], { type: 'removeTicket', ticketId: ids[0] });
+    const state = await act(host, [guest], addTicket('Ticket 11'));
+    expect(state.tickets).toHaveLength(10);
+    expect(state.tickets.at(-1).content).toBe('Ticket 11');
+  });
+
+  it('switches to any ticket with a fresh round, rejecting the already-active or unknown ones', async () => {
+    const { host, guest } = await twoUsers();
+    const [first, , third] = await addTickets(host, guest, 'One', 'Two', 'Three');
+
+    let state = await act(host, [guest], { type: 'selectTicket', ticketId: third });
+    expect(state.activeTicketId).toBe(third);
+
+    await act(guest, [host], vote('5', round));
+    host.send({ type: 'selectTicket', ticketId: third });
+    expect((await host.next('error')).message).toBe('Ticket is already active');
+    host.send({ type: 'selectTicket', ticketId: 'ticket-missing' });
+    expect((await host.next('error')).message).toBe('Ticket not found');
+
+    await act(host, [guest], { type: 'reveal' });
+    state = await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    expect(state).toMatchObject({ activeTicketId: first, revealed: false, votes: null, myVote: null });
+    expect(state.users.every((u: Message) => !u.hasVoted)).toBe(true);
+  });
+
+  it('rejects a vote cast for the previous round after the host switches ticket', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const [first, second] = await addTickets(host, guest, 'One', 'Two');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    const staleRound = round;
+    const switched = await act(host, [guest], { type: 'selectTicket', ticketId: second });
+    expect(switched.round).toBeGreaterThan(staleRound);
+
+    guest.send(vote('8', staleRound));
+    expect((await guest.next('error')).message).toBe('Vote was for a previous round');
+    await act(guest, [host], vote('5', round));
+    const revealed = await act(host, [guest], { type: 'reveal' });
+    expect(revealed.tickets[1].result.votes).toEqual({ [guestId]: '5' });
+  });
+
+  it('starts a new round on reset and on removing the active ticket', async () => {
+    const { host, guest } = await twoUsers();
+    const [first] = await addTickets(host, guest, 'One');
+    const initial = round;
+    await act(guest, [host], vote('5', round));
+    const reset = await act(host, [guest], { type: 'reset' });
+    expect(reset.round).toBe(initial + 1);
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    const removed = await act(host, [guest], { type: 'removeTicket', ticketId: first });
+    expect(removed.round).toBe(initial + 3);
+  });
+  it('keeps a revealed result per ticket across switching, reset and participants leaving', async () => {
+    const { host, guest, hostId, guestId } = await twoUsers();
+    const [first, second] = await addTickets(host, guest, 'One', 'Two');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    await act(guest, [host], vote('8', round));
+    const revealed = await act(host, [guest], { type: 'reveal' });
+    const expectedResult = {
+      users: [
+        { id: hostId, name: 'Host' },
+        { id: guestId, name: 'Guest', avatar: 'penguin' },
+      ],
+      votes: { [guestId]: '8' },
+    };
+    expect(revealed.tickets[0].result).toEqual(expectedResult);
+
+    await act(host, [guest], { type: 'reset' });
+    const switched = await act(host, [guest], { type: 'selectTicket', ticketId: second });
+    expect(switched.tickets[0].result).toEqual(expectedResult);
+    expect(switched.tickets[1].result).toBeNull();
+
+    await guest.close();
+    expect((await host.next('state')).tickets[0].result).toEqual(expectedResult);
+
+    await act(host, [], { type: 'selectTicket', ticketId: first });
+    await act(host, [], vote('3', round));
+    const overwritten = await act(host, [], { type: 'reveal' });
+    expect(overwritten.tickets[0].result).toEqual({ users: [{ id: hostId, name: 'Host' }], votes: { [hostId]: '3' } });
+  });
+
+  it('stores no result when revealing with no active ticket', async () => {
+    const { host, guest } = await twoUsers();
+    await addTickets(host, guest, 'One');
+    await act(guest, [host], vote('5', round));
+    const state = await act(host, [guest], { type: 'reveal' });
+    expect(state.revealed).toBe(true);
+    expect(state.tickets[0].result).toBeNull();
+  });
+
+  it('edits any ticket, including the active one, keeping votes and its stored result', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const [first, second] = await addTickets(host, guest, 'One', 'Two');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    await act(guest, [host], vote('5', round));
+    await act(host, [guest], { type: 'reveal' });
+    await act(host, [guest], { type: 'reset' });
+    await act(guest, [host], vote('13', round));
+
+    const edited = await act(host, [guest], { type: 'editTicket', ticketId: first, content: '  One with SSO ' });
+    expect(edited.tickets[0]).toMatchObject({ content: 'One with SSO', result: { votes: { [guestId]: '5' } } });
+    expect(edited.activeTicketId).toBe(first);
+    expect(edited.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
+
+    const other = await act(host, [guest], { type: 'editTicket', ticketId: second, content: 'Two edited' });
+    expect(other.tickets.map((t: Message) => t.content)).toEqual(['One with SSO', 'Two edited']);
+
+    host.send({ type: 'editTicket', ticketId: 'ticket-missing', content: 'X' });
+    expect((await host.next('error')).message).toBe('Ticket not found');
+  });
+
+  it('removes the active ticket, clearing the round and leaving no ticket active', async () => {
+    const { host, guest } = await twoUsers();
+    const [first, second] = await addTickets(host, guest, 'One', 'Two');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    await act(guest, [host], vote('5', round));
+
+    const state = await act(host, [guest], { type: 'removeTicket', ticketId: first });
+    expect(state.tickets.map((t: Message) => t.id)).toEqual([second]);
+    expect(state).toMatchObject({ activeTicketId: null, revealed: false, votes: null });
+    expect(state.users.every((u: Message) => !u.hasVoted)).toBe(true);
+
+    host.send({ type: 'removeTicket', ticketId: first });
+    expect((await host.next('error')).message).toBe('Ticket not found');
+  });
+
+  it('removes an inactive ticket without touching the current round', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const [first, second] = await addTickets(host, guest, 'One', 'Two');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    await act(guest, [host], vote('5', round));
+
+    const state = await act(host, [guest], { type: 'removeTicket', ticketId: second });
+    expect(state.activeTicketId).toBe(first);
     expect(state.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
-    expect(state.revealed).toBe(false);
   });
 
-  it('keeps the ticket when the host leaves and lets the promoted host edit it', async () => {
+  it('keeps tickets when the host leaves and lets the promoted host manage them', async () => {
     const { host, guest, guestId } = await twoUsers();
-    host.send(setTicket('Login'));
-    await guest.next('state');
+    const [first] = await addTickets(host, guest, 'Login');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
     await host.close();
     const promoted = await guest.next('state');
-    expect(promoted).toMatchObject({ hostId: guestId, ticket: { type: 'story', content: 'Login' } });
+    expect(promoted).toMatchObject({ hostId: guestId, activeTicketId: first, tickets: [{ content: 'Login' }] });
 
-    guest.send(setTicket('Logout'));
-    expect((await guest.next('state')).ticket.content).toBe('Logout');
+    const state = await act(guest, [], { type: 'editTicket', ticketId: first, content: 'Logout' });
+    expect(state.tickets[0].content).toBe('Logout');
   });
 });
 
@@ -465,9 +632,9 @@ describe('rate limiting', () => {
     const client = await connect(port, { room: ROOM, name: 'Spammy' });
     await client.next('state');
 
-    client.send({ type: 'vote', value: '1' });
-    client.send({ type: 'vote', value: '2' });
-    client.send({ type: 'vote', value: '3' });
+    client.send(vote('1'));
+    client.send(vote('2'));
+    client.send(vote('3'));
     await client.next('state');
     await client.next('state');
     expect(await client.next('error')).toEqual({ type: 'error', message: 'Rate limit exceeded' });

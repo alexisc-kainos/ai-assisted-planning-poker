@@ -34,7 +34,21 @@ function CopyLink({ url }: { url: string }) {
 }
 
 export function RoomPage({ roomId }: { roomId: string }) {
-  const { status, error, capacity, userId, state, join, vote, reveal, reset, setTicket } = useRoom(roomId);
+  const {
+    status,
+    error,
+    capacity,
+    userId,
+    state,
+    join,
+    vote,
+    reveal,
+    reset,
+    addTicket,
+    editTicket,
+    removeTicket,
+    selectTicket,
+  } = useRoom(roomId);
   const url = joinUrl(roomId);
 
   if (status === 'joined' && state) {
@@ -46,8 +60,20 @@ export function RoomPage({ roomId }: { roomId: string }) {
           </p>
         )}
         <CopyLink url={url} />
-        <TicketPanel ticket={state.ticket} isHost={state.hostId === userId} onSetTicket={setTicket} />
-        <VoteDeck selected={state.myVote} disabled={state.revealed} onVote={vote} />
+        <TicketPanel
+          tickets={state.tickets}
+          activeTicketId={state.activeTicketId}
+          isHost={state.hostId === userId}
+          onAdd={addTicket}
+          onEdit={editTicket}
+          onRemove={removeTicket}
+          onSelect={selectTicket}
+        />
+        <VoteDeck
+          selected={state.myVote}
+          disabled={state.revealed}
+          onVote={(value) => vote(value, state.round)}
+        />
         {userId === state.hostId && (
           <section className="card" aria-labelledby="voting-controls-heading">
             <h2 id="voting-controls-heading">Voting controls</h2>

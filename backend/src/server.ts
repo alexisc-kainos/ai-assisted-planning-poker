@@ -78,7 +78,7 @@ export function createAppServer(config: Config): AppServer {
       let error: string | null;
       switch (message.type) {
         case 'vote':
-          error = conn.room.vote(conn.userId, message.value);
+          error = conn.room.vote(conn.userId, message.value, message.round);
           break;
         case 'reveal':
           error = conn.room.reveal(conn.userId);
@@ -86,8 +86,17 @@ export function createAppServer(config: Config): AppServer {
         case 'reset':
           error = conn.room.reset(conn.userId);
           break;
-        case 'setTicket':
-          error = conn.room.setTicket(conn.userId, message.ticket);
+        case 'addTicket':
+          error = conn.room.addTicket(conn.userId, message.ticket);
+          break;
+        case 'editTicket':
+          error = conn.room.editTicket(conn.userId, message.ticketId, message.content);
+          break;
+        case 'removeTicket':
+          error = conn.room.removeTicket(conn.userId, message.ticketId);
+          break;
+        case 'selectTicket':
+          error = conn.room.selectTicket(conn.userId, message.ticketId);
           break;
       }
 

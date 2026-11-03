@@ -78,6 +78,8 @@ describe('RoomPage', () => {
       type: 'state',
       hostId: 'user-a',
       revealed: false,
+      tickets: [],
+      activeTicketId: null,
       users: [
         { id: 'user-a', name: 'Alice', avatar: 'cat', hasVoted: false },
         { id: 'user-b', name: 'Bob', avatar: 'penguin', hasVoted: false },
@@ -96,6 +98,8 @@ describe('RoomPage', () => {
       type: 'state',
       hostId: 'user-b',
       revealed: false,
+      tickets: [],
+      activeTicketId: null,
       users: [{ id: 'user-b', name: 'Bob', avatar: 'penguin', hasVoted: false }],
       votes: null,
     });
@@ -136,7 +140,12 @@ describe('RoomPage', () => {
       type: 'state',
       hostId,
       revealed: false,
-      ticket: { type: 'story', content: 'Login page' },
+      tickets: [
+        { id: 'ticket-1', type: 'story', content: 'Login page', result: null },
+        { id: 'ticket-2', type: 'story', content: 'Logout', result: null },
+      ],
+      activeTicketId: 'ticket-1',
+      round: 0,
       users: [
         { id: 'user-a', name: 'Alice', avatar: 'cat', hasVoted: false },
         { id: 'user-b', name: 'Bob', avatar: 'penguin', hasVoted: myVote !== null },
@@ -161,15 +170,15 @@ describe('RoomPage', () => {
     it('sends my vote, highlights the vote the server holds, and lets me change it', async () => {
       const ws = await joinAs('user-b');
       const user = userEvent.setup();
-      expect(screen.getByText('Login page')).toBeInTheDocument();
+      expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
 
       await user.click(screen.getByRole('button', { name: '5' }));
-      expect(ws.sent).toEqual([{ type: 'vote', value: '5' }]);
+      expect(ws.sent).toEqual([{ type: 'vote', value: '5', round: 0 }]);
       ws.emit(roomState('5'));
       expect(pressed('5')).toBe('true');
 
       await user.click(screen.getByRole('button', { name: '13' }));
-      expect(ws.sent.at(-1)).toEqual({ type: 'vote', value: '13' });
+      expect(ws.sent.at(-1)).toEqual({ type: 'vote', value: '13', round: 0 });
       ws.emit(roomState('13'));
       expect(pressed('13')).toBe('true');
       expect(pressed('5')).toBe('false');
@@ -188,6 +197,16 @@ describe('RoomPage', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Rate limit exceeded');
     });
 
+    it('tags my vote with the round from the latest state', async () => {
+      const ws = await joinAs('user-b');
+      ws.emit({ ...roomState(null), activeTicketId: 'ticket-2', round: 4 });
+      await userEvent.setup().click(screen.getByRole('button', { name: '8' }));
+      expect(ws.sent).toEqual([{ type: 'vote', value: '8', round: 4 }]);
+
+      ws.emit({ type: 'error', message: 'Vote was for a previous round' });
+      expect(screen.getByRole('alert')).toHaveTextContent('Vote was for a previous round');
+    });
+
     it('clears my highlighted card when the server says I have no vote', async () => {
       const ws = await joinAs('user-b');
       await userEvent.setup().click(screen.getByRole('button', { name: '8' }));
@@ -196,14 +215,90 @@ describe('RoomPage', () => {
       expect(pressed('8')).toBe('false');
     });
 
-    it('lets the host set the ticket', async () => {
+    it('sends ticket list actions from the host, confirming before removal', async () => {
       const ws = await joinAs('user-b', 'user-b');
       const user = userEvent.setup();
-      const textarea = screen.getByLabelText('What are we estimating?');
-      await user.clear(textarea);
-      await user.type(textarea, 'Logout');
-      await user.click(screen.getByRole('button', { name: 'Update ticket' }));
-      expect(ws.sent).toEqual([{ type: 'setTicket', ticket: { type: 'story', content: 'Logout' } }]);
+      const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+      vi.stubGlobal('confirm', confirm);
+
+      await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
+      await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+
+      const tickets = within(screen.getByRole('list', { name: 'Tickets' })).getAllByRole('listitem');
+      expect(tickets[0]).toHaveAttribute('aria-current', 'true');
+      expect(within(tickets[0]).queryByRole('button', { name: 'Start voting' })).not.toBeInTheDocument();
+      await user.click(within(tickets[1]).getByRole('button', { name: 'Start voting' }));
+
+      await user.click(within(tickets[0]).getByRole('button', { name: 'Edit' }));
+      const editor = within(tickets[0]).getByLabelText('Edit ticket text');
+      expect(editor).toHaveValue('Login page');
+      await user.clear(editor);
+      await user.type(editor, 'Login with SSO');
+      await user.click(within(tickets[0]).getByRole('button', { name: 'Save' }));
+
+      await user.click(within(tickets[0]).getByRole('button', { name: 'Remove' }));
+      await user.click(within(tickets[0]).getByRole('button', { name: 'Remove' }));
+      expect(confirm).toHaveBeenCalledTimes(2);
+      expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Login page'));
+
+      expect(ws.sent).toEqual([
+        { type: 'addTicket', ticket: { type: 'story', content: 'Signup' } },
+        { type: 'selectTicket', ticketId: 'ticket-2' },
+        { type: 'editTicket', ticketId: 'ticket-1', content: 'Login with SSO' },
+        { type: 'removeTicket', ticketId: 'ticket-1' },
+      ]);
+    });
+
+    it('shows the ticket list read-only to participants and no active ticket after removal', async () => {
+      const ws = await joinAs('user-b');
+      const list = within(screen.getByRole('list', { name: 'Tickets' }));
+      expect(list.getAllByRole('listitem').map((item) => item.querySelector('.ticket-content')?.textContent)).toEqual([
+        'Login page',
+        'Logout',
+      ]);
+      expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
+      for (const name of ['Start voting', 'Edit', 'Remove', 'Add ticket']) {
+        expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+      }
+
+      ws.emit({ ...roomState(null), tickets: [roomState(null).tickets[1]], activeTicketId: null });
+      expect(screen.getByText('Waiting for the host to choose a ticket.')).toBeInTheDocument();
+      expect(screen.getByRole('list', { name: 'Tickets' })).not.toHaveTextContent('Active');
+    });
+
+    it('lets anyone view a previous ticket result after switching away', async () => {
+      const ws = await joinAs('user-b');
+      const [first, second] = roomState(null).tickets;
+      ws.emit({
+        ...roomState(null),
+        tickets: [{ ...first, result: { users: [{ id: 'user-a', name: 'Alice' }], votes: { 'user-a': '8' } } }, second],
+        activeTicketId: 'ticket-2',
+      });
+      const user = userEvent.setup();
+      const toggle = screen.getByRole('button', { name: 'Show results' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await user.click(toggle);
+
+      expect(screen.getByRole('heading', { name: 'Previous results' })).toBeInTheDocument();
+      expect(screen.getByRole('meter', { name: '8: 1 vote' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Hide results' }));
+      expect(screen.queryByRole('heading', { name: 'Previous results' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the add draft when the server rejects it and clears it once the ticket is added', async () => {
+      const ws = await joinAs('user-b', 'user-b');
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
+      await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+      ws.emit({ type: 'error', message: 'A room can have at most 10 tickets' });
+      expect(screen.getByRole('alert')).toHaveTextContent('A room can have at most 10 tickets');
+      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+
+      await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+      const base = roomState(null, 'user-b');
+      ws.emit({ ...base, tickets: [...base.tickets, { id: 'ticket-3', type: 'story', content: 'Signup', result: null }] });
+      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('');
     });
 
     it('shows voting controls only to the current host and sends reveal/reset messages', async () => {
@@ -338,6 +433,8 @@ describe('RoomPage', () => {
       type: 'state',
       hostId: 'user-a',
       revealed: false,
+      tickets: [],
+      activeTicketId: null,
       users: [{ id: 'user-a', name: 'Alice', avatar: 'capybara', hasVoted: false }],
       votes: null,
     };

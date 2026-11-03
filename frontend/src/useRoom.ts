@@ -106,16 +106,25 @@ export function useRoom(roomId: string) {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
   }, []);
 
-  const vote = useCallback((value: string) => send({ type: 'vote', value }), [send]);
+  const vote = useCallback((value: string, round: number) => send({ type: 'vote', value, round }), [send]);
 
   const reveal = useCallback(() => send({ type: 'reveal' }), [send]);
 
   const reset = useCallback(() => send({ type: 'reset' }), [send]);
 
-  const setTicket = useCallback(
-    (content: string) => send({ type: 'setTicket', ticket: { type: 'story', content } }),
+  const addTicket = useCallback(
+    (content: string) => send({ type: 'addTicket', ticket: { type: 'story', content } }),
     [send],
   );
+
+  const editTicket = useCallback(
+    (ticketId: string, content: string) => send({ type: 'editTicket', ticketId, content }),
+    [send],
+  );
+
+  const removeTicket = useCallback((ticketId: string) => send({ type: 'removeTicket', ticketId }), [send]);
+
+  const selectTicket = useCallback((ticketId: string) => send({ type: 'selectTicket', ticketId }), [send]);
 
   useEffect(
     () => () => {
@@ -127,5 +136,19 @@ export function useRoom(roomId: string) {
     [],
   );
 
-  return { status, error, capacity, userId, state, join, vote, reveal, reset, setTicket };
+  return {
+    status,
+    error,
+    capacity,
+    userId,
+    state,
+    join,
+    vote,
+    reveal,
+    reset,
+    addTicket,
+    editTicket,
+    removeTicket,
+    selectTicket,
+  };
 }

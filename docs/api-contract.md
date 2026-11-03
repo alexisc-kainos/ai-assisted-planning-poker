@@ -70,7 +70,20 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
   "hostId": "user-abc123",
   "revealed": false,
   "deck": "fibonacci",
-  "ticket": { "type": "story", "content": "As a user I want to log in" },
+  "tickets": [
+    {
+      "id": "ticket-1a2b3c",
+      "type": "story",
+      "content": "As a user I want to log in",
+      "result": {
+        "users": [{ "id": "user-abc123", "name": "Alice", "avatar": "capybara" }],
+        "votes": { "user-abc123": "5" }
+      }
+    },
+    { "id": "ticket-4d5e6f", "type": "story", "content": "As a user I want to log out", "result": null }
+  ],
+  "activeTicketId": "ticket-4d5e6f",
+  "round": 3,
   "users": [
     { "id": "user-abc123", "name": "Alice", "avatar": "capybara", "hasVoted": true },
     { "id": "user-def456", "name": "Bob", "avatar": "penguin", "hasVoted": false }
@@ -85,7 +98,10 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
 - `hasVoted` lets the UI show "voted" indicators without exposing values pre-reveal.
 - `myVote` is the receiving client's own current vote (or `null`), so the UI can show which card the server actually holds. It is the only per-recipient field; it never carries anyone else's value, and is the authoritative selection after a rejected re-vote.
 - `deck` is included only when the room-creating connection provided a non-blank value. The backend does not choose or default the deck; when absent, the field is omitted from `state`.
-- `ticket` is the room's single active ticket, or `null` until the host sets one (see `setTicket`). It is always present. It survives host changes and is discarded with the room.
+- `tickets` is the room's ticket list (at most 10), in the order added. It is always present (`[]` when empty), survives host changes and is discarded with the room. Ticket `id`s are server-generated (`ticket-<hex>`) and unique within the room. Duplicate `content` is allowed.
+- `tickets[].result` is the snapshot taken the last time votes were revealed while that ticket was active, or `null` if never revealed. `result.users` lists everyone in the room at reveal time in join order (`avatar` omitted when absent), and `result.votes` maps those user ids to their values (non-voters are absent). It is not changed by `reset`, switching tickets, editing the ticket, or users leaving; the next reveal on that ticket overwrites it.
+- `activeTicketId` is the id of the ticket currently being voted on, or `null` when none is active. Tickets never become active automatically.
+- `round` identifies the current voting round. It starts at `0` and increases by one whenever the round is cleared: a successful `reset`, `selectTicket`, or removing the active ticket. Clients send it back with every `vote` so votes cast for an earlier round are rejected.
 - `users` is ordered by join order (`seq`). `users[].avatar` is included only when that connection provided a non-blank `avatar`; otherwise it is omitted.
 - A user disconnecting mid-round is removed from `users[]` and from the `votes` map; no auto-reveal flip occurs. If a host disconnects, the roster change and the host-promotion ride the same `state` message.
 - Reconnects are fresh users (new `id`, new `seq`, no vote) and do not regain host, even if they were the original host.
@@ -105,10 +121,17 @@ The full error vocabulary:
 | JSON parse failure | `Malformed message` |
 | Missing or unknown `type` | `Unknown message type` |
 | Known `type`, bad shape (e.g. `vote` without `value`, `vote.value` non-string) | `Invalid <type> message` |
+| `vote` whose `round` is not the current `state.round` | `Vote was for a previous round` |
 | `vote` while `revealed === true` | `Voting is locked until reset` |
 | `reveal` by non-host | `Only the host can reveal votes` |
 | `reset` by non-host | `Only the host can reset votes` |
-| `setTicket` by non-host | `Only the host can set the ticket` |
+| `addTicket` by non-host | `Only the host can add tickets` |
+| `editTicket` by non-host | `Only the host can edit tickets` |
+| `removeTicket` by non-host | `Only the host can remove tickets` |
+| `selectTicket` by non-host | `Only the host can select tickets` |
+| `addTicket` when the room already has 10 tickets | `A room can have at most 10 tickets` |
+| `editTicket`, `removeTicket` or `selectTicket` with an unknown `ticketId` | `Ticket not found` |
+| `selectTicket` for the already-active ticket | `Ticket is already active` |
 | `reveal` when already revealed | `Votes are already revealed` |
 | `reset` when already reset (no votes, unrevealed) | `Votes are already reset` |
 | Inbound rate limit exceeded | `Rate limit exceeded` |
@@ -123,10 +146,12 @@ The socket is kept open after any `error` except where noted.
 ### `vote`
 
 ```json
-{ "type": "vote", "value": "5" }
+{ "type": "vote", "value": "5", "round": 3 }
 ```
 
-`value` is a free-form string (so any deck — Fibonacci, T-shirt sizes, "?", "☕", etc. — works without backend changes). Bounds: 1–64 chars after trim, no character restrictions. Sending `vote` with a numeric value (e.g. `5` instead of `"5"`) is rejected with `Invalid vote message`. Re-voting before reveal overwrites the previous vote. `vote` after `reveal` is rejected with `Voting is locked until reset`. Voting does not require a ticket to be set, and there is no way to withdraw a vote other than `reset`.
+`round` is required and must be a non-negative integer; send the `round` from the latest `state`. A vote for any other round is rejected with `Vote was for a previous round`, so a vote in flight when the host switches ticket or resets is never counted against the new round. Missing or non-integer `round` is rejected with `Invalid vote message`.
+
+`value` is a free-form string (so any deck — Fibonacci, T-shirt sizes, "?", "☕", etc. — works without backend changes). Bounds: 1–64 chars after trim, no character restrictions. Sending `vote` with a numeric value (e.g. `5` instead of `"5"`) is rejected with `Invalid vote message`. Re-voting before reveal overwrites the previous vote. `vote` after `reveal` is rejected with `Voting is locked until reset`. Voting does not require a ticket to be active, and there is no way to withdraw a vote other than `reset`.
 
 ### `reveal`
 
@@ -134,7 +159,7 @@ The socket is kept open after any `error` except where noted.
 { "type": "reveal" }
 ```
 
-Host-only. Sets `revealed: true` and populates `votes` in the next `state` broadcast. If sent by a non-host, server responds with `Only the host can reveal votes` and ignores the action. If sent when `revealed === true`, server responds with `Votes are already revealed` and ignores the action. Revealing with zero votes is allowed; `votes` will be `{}`.
+Host-only. Sets `revealed: true` and populates `votes` in the next `state` broadcast. If a ticket is active, the revealed votes are also stored as that ticket's `result` (replacing any earlier one); with no active ticket nothing is stored. If sent by a non-host, server responds with `Only the host can reveal votes` and ignores the action. If sent when `revealed === true`, server responds with `Votes are already revealed` and ignores the action. Revealing with zero votes is allowed; `votes` will be `{}`.
 
 ### `reset`
 
@@ -142,15 +167,43 @@ Host-only. Sets `revealed: true` and populates `votes` in the next `state` broad
 { "type": "reset" }
 ```
 
-Host-only. Clears all votes, sets `revealed: false`, and broadcasts `state` (always, even if already unrevealed with no votes — for predictability the invalid case is rejected instead, see `error` table above). If sent by a non-host, server responds with `Only the host can reset votes` and ignores the action.
+Host-only. Clears all votes, sets `revealed: false`, and broadcasts `state` (always, even if already unrevealed with no votes — for predictability the invalid case is rejected instead, see `error` table above). Stored ticket `result`s are kept. If sent by a non-host, server responds with `Only the host can reset votes` and ignores the action.
 
-### `setTicket`
+### Ticket list
+
+All ticket messages are host-only and broadcast `state` on success. Ticket `content` is plain text, trimmed by the server, 1–500 chars after trim; line breaks are allowed. Clients must render it as text, never as HTML. `ticketId` must be a non-empty string of at most 64 chars. Bad shapes are rejected with `Invalid <type> message`.
+
+#### `addTicket`
 
 ```json
-{ "type": "setTicket", "ticket": { "type": "story", "content": "As a user I want to log in" } }
+{ "type": "addTicket", "ticket": { "type": "story", "content": "As a user I want to log in" } }
 ```
 
-Host-only. Sets or replaces the room's single active ticket and broadcasts `state`. `ticket.type` must be `"story"` (other types are rejected for now). `ticket.content` is plain text, trimmed by the server, 1–500 chars after trim; line breaks are allowed. Clients must render it as text, never as HTML. Votes and `revealed` are left unchanged, so the host can correct the text mid-round. Bad shapes are rejected with `Invalid setTicket message`; a non-host gets `Only the host can set the ticket`. A ticket cannot be cleared once set.
+Appends a ticket with a new `id` and `result: null`. `ticket.type` must be `"story"` (other types are rejected for now). The new ticket is not made active. Rejected with `A room can have at most 10 tickets` when the list already holds 10; removing a ticket frees a slot.
+
+#### `editTicket`
+
+```json
+{ "type": "editTicket", "ticketId": "ticket-1a2b3c", "content": "As a user I want to log in with SSO" }
+```
+
+Replaces a ticket's `content`. Allowed on any ticket, including the active one. Votes, `revealed` and the ticket's stored `result` are unchanged.
+
+#### `removeTicket`
+
+```json
+{ "type": "removeTicket", "ticketId": "ticket-1a2b3c" }
+```
+
+Removes a ticket and its stored `result`. If it was the active ticket, `activeTicketId` becomes `null` and the current round is cleared (all votes cleared, `revealed: false`); no ticket is active until the host selects one. Removing any other ticket leaves the current round untouched.
+
+#### `selectTicket`
+
+```json
+{ "type": "selectTicket", "ticketId": "ticket-4d5e6f" }
+```
+
+Makes any ticket in the list active and starts a fresh round: all votes are cleared and `revealed` becomes `false`. Stored `result`s of every ticket, including the newly active one, are kept until that ticket is revealed again. Selecting the already-active ticket is rejected with `Ticket is already active`.
 
 ### Disconnection
 

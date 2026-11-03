@@ -1,5 +1,6 @@
 export const MAX_NAME_LENGTH = 32;
 export const MAX_TICKET_LENGTH = 500;
+export const MAX_TICKETS = 10;
 
 export function nameError(name: string): string | null {
   const trimmed = name.trim();

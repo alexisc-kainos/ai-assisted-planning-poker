@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { Ticket } from './validation.js';
+import { MAX_TICKETS, type Ticket } from './validation.js';
 
 export interface Member {
   id: string;
@@ -9,12 +9,24 @@ export interface Member {
   vote?: string;
 }
 
+export interface TicketResult {
+  users: Array<{ id: string; name: string; avatar?: string }>;
+  votes: Record<string, string>;
+}
+
+export interface RoomTicket extends Ticket {
+  id: string;
+  result: TicketResult | null;
+}
+
 export interface StateMessage {
   type: 'state';
   hostId: string | null;
   revealed: boolean;
   deck?: string;
-  ticket: Ticket | null;
+  tickets: RoomTicket[];
+  activeTicketId: string | null;
+  round: number;
   users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean }>;
   votes: Record<string, string> | null;
   myVote: string | null;
@@ -25,7 +37,9 @@ export class Room {
   private nextSeq = 1;
   hostId: string | null = null;
   revealed = false;
-  ticket: Ticket | null = null;
+  tickets: RoomTicket[] = [];
+  activeTicketId: string | null = null;
+  round = 0;
 
   constructor(
     readonly id: string,
@@ -59,7 +73,8 @@ export class Room {
   }
 
   /** Each action returns an error message, or null when state changed. */
-  vote(userId: string, value: string): string | null {
+  vote(userId: string, value: string, round: number): string | null {
+    if (round !== this.round) return 'Vote was for a previous round';
     if (this.revealed) return 'Voting is locked until reset';
     const member = this.members.get(userId);
     if (member) member.vote = value;
@@ -70,6 +85,14 @@ export class Room {
     if (userId !== this.hostId) return 'Only the host can reveal votes';
     if (this.revealed) return 'Votes are already revealed';
     this.revealed = true;
+    const active = this.tickets.find((ticket) => ticket.id === this.activeTicketId);
+    if (active) {
+      const members = this.orderedMembers();
+      active.result = {
+        users: members.map(({ id, name, avatar }) => ({ id, name, ...(avatar ? { avatar } : {}) })),
+        votes: this.revealedVotes(members),
+      };
+    }
     return null;
   }
 
@@ -77,38 +100,85 @@ export class Room {
     if (userId !== this.hostId) return 'Only the host can reset votes';
     const hasVotes = [...this.members.values()].some((member) => member.vote !== undefined);
     if (!this.revealed && !hasVotes) return 'Votes are already reset';
-    this.revealed = false;
-    for (const member of this.members.values()) delete member.vote;
+    this.clearRound();
     return null;
   }
 
-  setTicket(userId: string, ticket: Ticket): string | null {
-    if (userId !== this.hostId) return 'Only the host can set the ticket';
-    this.ticket = ticket;
+  addTicket(userId: string, ticket: Ticket): string | null {
+    if (userId !== this.hostId) return 'Only the host can add tickets';
+    if (this.tickets.length >= MAX_TICKETS) return `A room can have at most ${MAX_TICKETS} tickets`;
+    let id: string;
+    do {
+      id = `ticket-${randomBytes(6).toString('hex')}`;
+    } while (this.tickets.some((existing) => existing.id === id));
+    this.tickets.push({ id, ...ticket, result: null });
+    return null;
+  }
+
+  editTicket(userId: string, ticketId: string, content: string): string | null {
+    if (userId !== this.hostId) return 'Only the host can edit tickets';
+    const ticket = this.tickets.find((existing) => existing.id === ticketId);
+    if (!ticket) return 'Ticket not found';
+    ticket.content = content;
+    return null;
+  }
+
+  removeTicket(userId: string, ticketId: string): string | null {
+    if (userId !== this.hostId) return 'Only the host can remove tickets';
+    const index = this.tickets.findIndex((existing) => existing.id === ticketId);
+    if (index === -1) return 'Ticket not found';
+    this.tickets.splice(index, 1);
+    if (this.activeTicketId === ticketId) {
+      this.activeTicketId = null;
+      this.clearRound();
+    }
+    return null;
+  }
+
+  selectTicket(userId: string, ticketId: string): string | null {
+    if (userId !== this.hostId) return 'Only the host can select tickets';
+    if (!this.tickets.some((existing) => existing.id === ticketId)) return 'Ticket not found';
+    if (this.activeTicketId === ticketId) return 'Ticket is already active';
+    this.activeTicketId = ticketId;
+    this.clearRound();
     return null;
   }
 
   snapshot(forUserId: string): StateMessage {
-    const members = [...this.members.values()].sort((a, b) => a.seq - b.seq);
+    const members = this.orderedMembers();
     const state: StateMessage = {
       type: 'state',
       hostId: this.hostId,
       revealed: this.revealed,
-      ticket: this.ticket,
+      tickets: this.tickets,
+      activeTicketId: this.activeTicketId,
+      round: this.round,
       users: members.map(({ id, name, avatar, vote }) => ({
         id,
         name,
         ...(avatar ? { avatar } : {}),
         hasVoted: vote !== undefined,
       })),
-      votes: this.revealed
-        ? Object.fromEntries(
-            members.filter((m) => m.vote !== undefined).map((m) => [m.id, m.vote as string]),
-          )
-        : null,
+      votes: this.revealed ? this.revealedVotes(members) : null,
       myVote: this.members.get(forUserId)?.vote ?? null,
     };
     if (this.deck) state.deck = this.deck;
     return state;
+  }
+
+  private orderedMembers(): Member[] {
+    return [...this.members.values()].sort((a, b) => a.seq - b.seq);
+  }
+
+  private revealedVotes(members: Member[]): Record<string, string> {
+    return Object.fromEntries(
+      members.filter((m) => m.vote !== undefined).map((m) => [m.id, m.vote as string]),
+    );
+  }
+
+  private clearRound(): void {
+    this.round += 1;
+    this.revealed = false;
+    for (const member of this.members.values()) delete member.vote;
   }
 }
