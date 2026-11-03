@@ -74,7 +74,7 @@ function parseTitle(title: unknown): string | null {
   if (typeof title !== 'string') return null;
   const trimmed = title.trim();
   const length = charLength(trimmed);
-  return length >= 1 && length <= MAX_TICKET_TITLE_LENGTH && !/[\r\n]/.test(trimmed) ? trimmed : null;
+  return length >= 1 && length <= MAX_TICKET_TITLE_LENGTH && !/[\r\n\u2028\u2029]/.test(trimmed) ? trimmed : null;
 }
 
 function parseDescription(description: unknown): string | null {
