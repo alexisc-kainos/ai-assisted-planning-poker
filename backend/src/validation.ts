@@ -43,17 +43,21 @@ export function parseConnectParams(params: URLSearchParams): ConnectParams | nul
   return { room, name, deck: deck.value, avatar: avatar.value };
 }
 
+export type TicketType = 'story' | 'spike';
+
 export interface Ticket {
-  type: 'story';
+  type: TicketType;
   content: string;
 }
+
+const isTicketType = (value: unknown): value is TicketType => value === 'story' || value === 'spike';
 
 export type ClientMessage =
   | { type: 'vote'; value: string; round: number }
   | { type: 'reveal' }
   | { type: 'reset' }
   | { type: 'addTicket'; ticket: Ticket }
-  | { type: 'editTicket'; ticketId: string; content: string }
+  | { type: 'editTicket'; ticketId: string; content: string; ticketType?: TicketType }
   | { type: 'removeTicket'; ticketId: string }
   | { type: 'selectTicket'; ticketId: string };
 
@@ -100,14 +104,16 @@ export function parseClientMessage(raw: string): ParseResult {
       if (typeof ticket !== 'object' || ticket === null || Array.isArray(ticket)) return invalid;
       const { type, content } = ticket as Record<string, unknown>;
       const trimmed = parseContent(content);
-      if (type !== 'story' || trimmed === null) return invalid;
+      if (!isTicketType(type) || trimmed === null) return invalid;
       return { ok: true, message: { type: 'addTicket', ticket: { type, content: trimmed } } };
     }
     case 'editTicket': {
-      const { ticketId } = message;
+      const { ticketId, ticketType } = message;
       const content = parseContent(message.content);
       if (!isTicketId(ticketId) || content === null) return { ok: false, error: 'Invalid editTicket message' };
-      return { ok: true, message: { type: 'editTicket', ticketId, content } };
+      if (ticketType === undefined) return { ok: true, message: { type: 'editTicket', ticketId, content } };
+      if (!isTicketType(ticketType)) return { ok: false, error: 'Invalid editTicket message' };
+      return { ok: true, message: { type: 'editTicket', ticketId, content, ticketType } };
     }
     case 'removeTicket':
     case 'selectTicket': {

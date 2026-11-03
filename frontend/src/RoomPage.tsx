@@ -52,6 +52,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
   const url = joinUrl(roomId);
 
   if (status === 'joined' && state) {
+    const ticketType = state.tickets.find((ticket) => ticket.id === state.activeTicketId)?.type ?? 'story';
     return (
       <>
         {error && (
@@ -71,6 +72,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
         />
         <VoteDeck
           selected={state.myVote}
+          ticketType={ticketType}
           disabled={state.revealed}
           onVote={(value) => vote(value, state.round)}
         />
@@ -83,7 +85,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
             </div>
           </section>
         )}
-        {state.revealed && <VoteResults users={state.users} votes={state.votes ?? {}} />}
+        {state.revealed && <VoteResults users={state.users} votes={state.votes ?? {}} ticketType={ticketType} />}
         <Roster users={state.users} hostId={state.hostId} meId={userId} />
       </>
     );

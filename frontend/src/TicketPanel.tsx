@@ -1,16 +1,35 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
-import type { RoomTicket } from './types';
+import type { RoomTicket, TicketType } from './types';
 import { MAX_TICKETS, ticketError } from './validation';
 import { VoteResults } from './VoteResults';
+
+const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike' };
 
 interface TicketPanelProps {
   tickets: RoomTicket[];
   activeTicketId: string | null;
   isHost: boolean;
-  onAdd: (content: string) => void;
-  onEdit: (ticketId: string, content: string) => void;
+  onAdd: (content: string, type: TicketType) => void;
+  onEdit: (ticketId: string, content: string, type: TicketType) => void;
   onRemove: (ticketId: string) => void;
   onSelect: (ticketId: string) => void;
+}
+
+function TicketTypeOptions({ value, onChange }: { value: TicketType; onChange: (type: TicketType) => void }) {
+  const name = useId();
+  return (
+    <fieldset className="field">
+      <legend>Ticket type</legend>
+      <div className="type-options">
+        {(['story', 'spike'] as const).map((type) => (
+          <label key={type}>
+            <input type="radio" name={name} value={type} checked={value === type} onChange={() => onChange(type)} />{' '}
+            {TYPE_LABELS[type]}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
 }
 
 interface TicketTextFormProps {
@@ -70,7 +89,8 @@ function TicketTextForm({ label, submitLabel, initial = '', disabled, onSubmit, 
   );
 }
 
-function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: (content: string) => void }) {
+function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: TicketPanelProps['onAdd'] }) {
+  const [type, setType] = useState<TicketType>('story');
   const [pending, setPending] = useState<{ content: string; knownIds: Set<string> } | null>(null);
   const [formKey, setFormKey] = useState(0);
   const full = tickets.length >= MAX_TICKETS;
@@ -86,22 +106,12 @@ function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: (cont
 
   const add = (content: string) => {
     setPending({ content, knownIds: new Set(tickets.map((ticket) => ticket.id)) });
-    onAdd(content);
+    onAdd(content, type);
   };
 
   return (
     <div className="ticket-add">
-      <fieldset className="field">
-        <legend>Ticket type</legend>
-        <div className="type-options">
-          <label>
-            <input type="radio" name="ticket-type" value="story" checked readOnly /> Story
-          </label>
-          <label className="disabled">
-            <input type="radio" name="ticket-type" value="spike" disabled /> Spike
-          </label>
-        </div>
-      </fieldset>
+      <TicketTypeOptions value={type} onChange={setType} />
       <TicketTextForm
         key={formKey}
         label="What are we estimating?"
@@ -125,17 +135,23 @@ interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTick
 
 function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: TicketItemProps) {
   const [editing, setEditing] = useState(false);
-  const [pendingEdit, setPendingEdit] = useState<string | null>(null);
+  const [editType, setEditType] = useState<TicketType>(ticket.type);
+  const [pendingEdit, setPendingEdit] = useState<{ content: string; type: TicketType } | null>(null);
   const [showResults, setShowResults] = useState(false);
   const resultsId = useId();
 
-  // Close the editor only once the server broadcasts the saved text, so a rejection keeps the draft.
+  // Close the editor only once the server broadcasts the saved edit, so a rejection keeps the draft.
   useEffect(() => {
-    if (pendingEdit !== null && ticket.content === pendingEdit) {
+    if (pendingEdit !== null && ticket.content === pendingEdit.content && ticket.type === pendingEdit.type) {
       setPendingEdit(null);
       setEditing(false);
     }
-  }, [ticket.content, pendingEdit]);
+  }, [ticket.content, ticket.type, pendingEdit]);
+
+  const startEditing = () => {
+    setEditType(ticket.type);
+    setEditing(true);
+  };
 
   const stopEditing = () => {
     setPendingEdit(null);
@@ -149,24 +165,32 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
   return (
     <li className={active ? 'ticket-item active' : 'ticket-item'} aria-current={active ? 'true' : undefined}>
       <div className="ticket-badges">
-        <span className="badge">Story</span>
+        <span className="badge">{TYPE_LABELS[ticket.type]}</span>
         {active && <span className="badge voted">Active</span>}
         {ticket.result && <span className="badge waiting">Revealed</span>}
       </div>
       {editing ? (
-        <TicketTextForm
-          label="Edit ticket text"
-          submitLabel="Save"
-          initial={ticket.content}
-          onSubmit={(content) => {
-            setPendingEdit(content);
-            onEdit(ticket.id, content);
-          }}
-        >
-          <button type="button" onClick={stopEditing}>
-            Cancel
-          </button>
-        </TicketTextForm>
+        <>
+          <TicketTypeOptions value={editType} onChange={setEditType} />
+          {editType !== ticket.type && (
+            <p className="hint" role="status">
+              Changing the type clears this ticket's votes and results.
+            </p>
+          )}
+          <TicketTextForm
+            label="Edit ticket text"
+            submitLabel="Save"
+            initial={ticket.content}
+            onSubmit={(content) => {
+              setPendingEdit({ content, type: editType });
+              onEdit(ticket.id, content, editType);
+            }}
+          >
+            <button type="button" onClick={stopEditing}>
+              Cancel
+            </button>
+          </TicketTextForm>
+        </>
       ) : (
         <p className="ticket-content">{ticket.content}</p>
       )}
@@ -177,7 +201,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
           </button>
         )}
         {isHost && !editing && (
-          <button type="button" onClick={() => setEditing(true)}>
+          <button type="button" onClick={startEditing}>
             Edit
           </button>
         )}
@@ -199,7 +223,12 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
       </div>
       {ticket.result && showResults && (
         <div id={resultsId}>
-          <VoteResults users={ticket.result.users} votes={ticket.result.votes} title="Previous results" />
+          <VoteResults
+            users={ticket.result.users}
+            votes={ticket.result.votes}
+            ticketType={ticket.type}
+            title="Previous results"
+          />
         </div>
       )}
     </li>

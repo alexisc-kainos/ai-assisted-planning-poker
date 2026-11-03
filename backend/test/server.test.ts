@@ -452,7 +452,7 @@ describe('ticket list', () => {
 
   it.each([
     ['no ticket', { type: 'addTicket' }],
-    ['spike type', addTicket('Login', 'spike')],
+    ['unknown type', addTicket('Login', 'epic')],
     ['blank content', addTicket('   ')],
     ['content over 500 chars', addTicket('x'.repeat(501))],
   ])('rejects %s with Invalid addTicket message', async (_label, message) => {
@@ -585,6 +585,90 @@ describe('ticket list', () => {
 
     host.send({ type: 'editTicket', ticketId: 'ticket-missing', content: 'X' });
     expect((await host.next('error')).message).toBe('Ticket not found');
+  });
+
+  it('adds a spike ticket and stores its revealed day votes, kept across reset', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const added = await act(host, [guest], addTicket('Investigate SSO', 'spike'));
+    const [spike] = added.tickets;
+    expect(spike).toMatchObject({ type: 'spike', content: 'Investigate SSO', result: null });
+
+    await act(host, [guest], { type: 'selectTicket', ticketId: spike.id });
+    await act(guest, [host], vote('3', round));
+    await act(host, [guest], vote('☕', round));
+    const revealed = await act(host, [guest], { type: 'reveal' });
+    expect(revealed.votes).toMatchObject({ [guestId]: '3' });
+    expect(revealed.tickets[0].result.votes).toMatchObject({ [guestId]: '3' });
+
+    const reset = await act(host, [guest], { type: 'reset' });
+    expect(reset).toMatchObject({ revealed: false, votes: null });
+    expect(reset.tickets[0].result.votes).toMatchObject({ [guestId]: '3' });
+  });
+
+  it('changing the active ticket type clears votes, reveal and its result, and starts a new round', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const [first] = await addTickets(host, guest, 'One');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    await act(guest, [host], vote('8', round));
+    await act(host, [guest], { type: 'reveal' });
+    const before = round;
+
+    const changed = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One', ticketType: 'spike' });
+    expect(changed.tickets[0]).toMatchObject({ type: 'spike', result: null });
+    expect(changed).toMatchObject({ activeTicketId: first, revealed: false, votes: null, myVote: null, round: before + 1 });
+    expect(changed.users.find((u: Message) => u.id === guestId).hasVoted).toBe(false);
+
+    guest.send(vote('8', before));
+    expect((await guest.next('error')).message).toBe('Vote was for a previous round');
+
+    await act(guest, [host], vote('2', round));
+    const back = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One', ticketType: 'story' });
+    expect(back.tickets[0].type).toBe('story');
+    expect(back.users.every((u: Message) => !u.hasVoted)).toBe(true);
+  });
+
+  it('changing an inactive ticket type clears only its result', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const [first, second] = await addTickets(host, guest, 'One', 'Two');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    await act(guest, [host], vote('5', round));
+    await act(host, [guest], { type: 'reveal' });
+    await act(host, [guest], { type: 'selectTicket', ticketId: second });
+    await act(guest, [host], vote('3', round));
+    const before = round;
+
+    const changed = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One', ticketType: 'spike' });
+    expect(changed.tickets[0]).toMatchObject({ type: 'spike', result: null });
+    expect(changed).toMatchObject({ activeTicketId: second, round: before });
+    expect(changed.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
+  });
+
+  it('keeps votes and result when the ticketType sent is unchanged', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const [first] = await addTickets(host, guest, 'One');
+    await act(host, [guest], { type: 'selectTicket', ticketId: first });
+    await act(guest, [host], vote('5', round));
+    await act(host, [guest], { type: 'reveal' });
+    await act(host, [guest], { type: 'reset' });
+    await act(guest, [host], vote('8', round));
+    const before = round;
+
+    const edited = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One!', ticketType: 'story' });
+    expect(edited.tickets[0]).toMatchObject({ content: 'One!', type: 'story', result: { votes: { [guestId]: '5' } } });
+    expect(edited.round).toBe(before);
+    expect(edited.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
+  });
+
+  it('rejects an invalid ticketType and a non-host type change without broadcasting', async () => {
+    const { host, guest } = await twoUsers();
+    const [first] = await addTickets(host, guest, 'One');
+    host.send({ type: 'editTicket', ticketId: first, content: 'One', ticketType: 'epic' });
+    expect((await host.next('error')).message).toBe('Invalid editTicket message');
+    guest.send({ type: 'editTicket', ticketId: first, content: 'One', ticketType: 'spike' });
+    expect((await guest.next('error')).message).toBe('Only the host can edit tickets');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(host.messages).toEqual([]);
+    expect(guest.messages).toEqual([]);
   });
 
   it('removes the active ticket, clearing the round and leaving no ticket active', async () => {

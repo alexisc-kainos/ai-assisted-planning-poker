@@ -1,3 +1,5 @@
+export type TicketType = 'story' | 'spike';
+
 export interface RosterUser {
   id: string;
   name: string;
@@ -6,7 +8,7 @@ export interface RosterUser {
 }
 
 export interface Ticket {
-  type: 'story';
+  type: TicketType;
   content: string;
 }
 
@@ -43,7 +45,7 @@ export type ClientMessage =
   | { type: 'reveal' }
   | { type: 'reset' }
   | { type: 'addTicket'; ticket: Ticket }
-  | { type: 'editTicket'; ticketId: string; content: string }
+  | { type: 'editTicket'; ticketId: string; content: string; ticketType?: TicketType }
   | { type: 'removeTicket'; ticketId: string }
   | { type: 'selectTicket'; ticketId: string };
 

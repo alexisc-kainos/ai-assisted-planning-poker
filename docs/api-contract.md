@@ -80,7 +80,7 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
         "votes": { "user-abc123": "5" }
       }
     },
-    { "id": "ticket-4d5e6f", "type": "story", "content": "As a user I want to log out", "result": null }
+    { "id": "ticket-4d5e6f", "type": "spike", "content": "Investigate SSO providers", "result": null }
   ],
   "activeTicketId": "ticket-4d5e6f",
   "round": 3,
@@ -98,10 +98,10 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
 - `hasVoted` lets the UI show "voted" indicators without exposing values pre-reveal.
 - `myVote` is the receiving client's own current vote (or `null`), so the UI can show which card the server actually holds. It is the only per-recipient field; it never carries anyone else's value, and is the authoritative selection after a rejected re-vote.
 - `deck` is included only when the room-creating connection provided a non-blank value. The backend does not choose or default the deck; when absent, the field is omitted from `state`.
-- `tickets` is the room's ticket list (at most 10), in the order added. It is always present (`[]` when empty), survives host changes and is discarded with the room. Ticket `id`s are server-generated (`ticket-<hex>`) and unique within the room. Duplicate `content` is allowed.
-- `tickets[].result` is the snapshot taken the last time votes were revealed while that ticket was active, or `null` if never revealed. `result.users` lists everyone in the room at reveal time in join order (`avatar` omitted when absent), and `result.votes` maps those user ids to their values (non-voters are absent). It is not changed by `reset`, switching tickets, editing the ticket, or users leaving; the next reveal on that ticket overwrites it.
+- `tickets` is the room's ticket list (at most 10), in the order added. It is always present (`[]` when empty), survives host changes and is discarded with the room. Ticket `id`s are server-generated (`ticket-<hex>`) and unique within the room. Duplicate `content` is allowed. `tickets[].type` is `"story"` or `"spike"`; the frontend uses it to choose the voting deck (the backend does not restrict vote values by type).
+- `tickets[].result` is the snapshot taken the last time votes were revealed while that ticket was active, or `null` if never revealed. `result.users` lists everyone in the room at reveal time in join order (`avatar` omitted when absent), and `result.votes` maps those user ids to their values (non-voters are absent). It is not changed by `reset`, switching tickets, editing the ticket's content, or users leaving; changing the ticket's type clears it to `null`; the next reveal on that ticket overwrites it.
 - `activeTicketId` is the id of the ticket currently being voted on, or `null` when none is active. Tickets never become active automatically.
-- `round` identifies the current voting round. It starts at `0` and increases by one whenever the round is cleared: a successful `reset`, `selectTicket`, or removing the active ticket. Clients send it back with every `vote` so votes cast for an earlier round are rejected.
+- `round` identifies the current voting round. It starts at `0` and increases by one whenever the round is cleared: a successful `reset`, `selectTicket`, removing the active ticket, or changing the active ticket's type. Clients send it back with every `vote` so votes cast for an earlier round are rejected.
 - `users` is ordered by join order (`seq`). `users[].avatar` is included only when that connection provided a non-blank `avatar`; otherwise it is omitted.
 - A user disconnecting mid-round is removed from `users[]` and from the `votes` map; no auto-reveal flip occurs. If a host disconnects, the roster change and the host-promotion ride the same `state` message.
 - Reconnects are fresh users (new `id`, new `seq`, no vote) and do not regain host, even if they were the original host.
@@ -179,15 +179,17 @@ All ticket messages are host-only and broadcast `state` on success. Ticket `cont
 { "type": "addTicket", "ticket": { "type": "story", "content": "As a user I want to log in" } }
 ```
 
-Appends a ticket with a new `id` and `result: null`. `ticket.type` must be `"story"` (other types are rejected for now). The new ticket is not made active. Rejected with `A room can have at most 10 tickets` when the list already holds 10; removing a ticket frees a slot.
+Appends a ticket with a new `id` and `result: null`. `ticket.type` must be `"story"` or `"spike"`. The new ticket is not made active. Rejected with `A room can have at most 10 tickets` when the list already holds 10; removing a ticket frees a slot.
 
 #### `editTicket`
 
 ```json
-{ "type": "editTicket", "ticketId": "ticket-1a2b3c", "content": "As a user I want to log in with SSO" }
+{ "type": "editTicket", "ticketId": "ticket-1a2b3c", "content": "As a user I want to log in with SSO", "ticketType": "story" }
 ```
 
 Replaces a ticket's `content`. Allowed on any ticket, including the active one. Votes, `revealed` and the ticket's stored `result` are unchanged.
+
+`ticketType` is optional (`"story"` or `"spike"`; any other value is rejected with `Invalid editTicket message`). When omitted or equal to the current type, only `content` changes. When it differs, the ticket's type is changed and its stored `result` is cleared to `null`; if it is the active ticket, the current round is also cleared (all votes cleared, `revealed: false`, `round` incremented).
 
 #### `removeTicket`
 
