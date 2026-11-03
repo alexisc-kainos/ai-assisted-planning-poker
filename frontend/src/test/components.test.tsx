@@ -195,7 +195,7 @@ describe('TicketPanel', () => {
 
   it('lets the host add a story ticket by default', async () => {
     const { onAdd } = renderPanel();
-    expect(screen.getByRole('heading', { name: 'Tickets (0/10)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tickets' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Story' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Spike' })).toBeEnabled();
 
@@ -252,7 +252,7 @@ describe('TicketPanel', () => {
     const { onAdd } = renderPanel({
       tickets: Array.from({ length: 10 }, (_, i) => ticket(`t${i}`, `Ticket ${i + 1}`)),
     });
-    expect(screen.getByRole('heading', { name: 'Tickets (10/10)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Tickets' })).toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent("You've reached the limit of 10 tickets.");
     await userEvent.setup().type(screen.getByLabelText('What are we estimating?'), 'One more');
     expect(screen.getByRole('button', { name: 'Add ticket' })).toBeDisabled();

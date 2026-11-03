@@ -238,9 +238,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
 export function TicketPanel({ tickets, activeTicketId, isHost, onAdd, ...itemProps }: TicketPanelProps) {
   return (
     <section className="card tickets-card" aria-labelledby="ticket-heading">
-      <h2 id="ticket-heading">
-        Tickets ({tickets.length}/{MAX_TICKETS})
-      </h2>
+      <h2 id="ticket-heading">Tickets</h2>
       {tickets.length > 0 && (
         <ol className="ticket-list" aria-label="Tickets">
           {tickets.map((ticket) => (
