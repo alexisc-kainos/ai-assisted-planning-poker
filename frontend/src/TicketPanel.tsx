@@ -3,7 +3,7 @@ import type { RoomTicket, TicketType } from './types';
 import { MAX_TICKETS, ticketError } from './validation';
 import { VoteResults } from './VoteResults';
 
-const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike' };
+export const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike' };
 
 interface TicketPanelProps {
   tickets: RoomTicket[];
@@ -236,24 +236,11 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
 }
 
 export function TicketPanel({ tickets, activeTicketId, isHost, onAdd, ...itemProps }: TicketPanelProps) {
-  const active = tickets.find((ticket) => ticket.id === activeTicketId);
-
   return (
-    <section className="card" aria-labelledby="ticket-heading">
+    <section className="card tickets-card" aria-labelledby="ticket-heading">
       <h2 id="ticket-heading">
         Tickets ({tickets.length}/{MAX_TICKETS})
       </h2>
-      {active ? (
-        <p className="ticket-content">
-          <strong>Now voting:</strong> {active.content}
-        </p>
-      ) : tickets.length === 0 ? (
-        !isHost && <p className="hint">Waiting for the host to add a ticket.</p>
-      ) : (
-        <p className="hint">
-          {isHost ? 'No ticket is active. Choose one to start voting.' : 'Waiting for the host to choose a ticket.'}
-        </p>
-      )}
       {tickets.length > 0 && (
         <ol className="ticket-list" aria-label="Tickets">
           {tickets.map((ticket) => (

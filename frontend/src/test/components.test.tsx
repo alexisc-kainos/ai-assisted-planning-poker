@@ -1,11 +1,13 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { CurrentTicket } from '../CurrentTicket';
 import { JoinForm } from '../JoinForm';
 import { Roster } from '../Roster';
 import { TicketPanel } from '../TicketPanel';
 import type { RoomTicket } from '../types';
 import { VoteDeck } from '../VoteDeck';
+import { VoteResults } from '../VoteResults';
 
 describe('JoinForm', () => {
   const setup = () => {
@@ -328,20 +330,13 @@ describe('TicketPanel', () => {
   it('shows a non-host the list as read-only text with no management controls', () => {
     renderPanel({ isHost: false, tickets: [ticket('t1', '<b>Login</b>')], activeTicketId: null });
     expect(screen.getByText('<b>Login</b>')).toBeInTheDocument();
-    expect(screen.getByText('Waiting for the host to choose a ticket.')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('tells a host when no ticket is active', () => {
-    renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: null });
-    expect(screen.getByText('No ticket is active. Choose one to start voting.')).toBeInTheDocument();
-  });
-
-  it('tells other participants when there are no tickets yet', () => {
+  it('shows no ticket list when there are no tickets yet', () => {
     renderPanel({ isHost: false });
-    expect(screen.getByText('Waiting for the host to add a ticket.')).toBeInTheDocument();
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
   });
 
@@ -368,5 +363,61 @@ describe('TicketPanel', () => {
     const participants = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
     expect(participants.map((row) => row.textContent)).toEqual(['Sam1 day', 'Kim3 days']);
     expect(screen.getByRole('meter', { name: '1 day: 1 vote' })).toBeInTheDocument();
+  });
+});
+
+describe('CurrentTicket', () => {
+  const ticket = (id: string, content: string, type: RoomTicket['type'] = 'story'): RoomTicket => ({ id, content, type, result: null });
+
+  it('shows the active ticket with its type', () => {
+    render(<CurrentTicket tickets={[ticket('t1', 'Login page', 'spike')]} activeTicketId="t1" isHost={false} />);
+    expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
+    expect(screen.getByRole('region', { name: 'Current ticket' })).toHaveTextContent('Spike');
+  });
+
+  it('tells a non-host when the host has not chosen a ticket', () => {
+    render(<CurrentTicket tickets={[ticket('t1', '<b>Login</b>')]} activeTicketId={null} isHost={false} />);
+    expect(screen.getByRole('heading', { name: 'The room is ready' })).toBeInTheDocument();
+    expect(screen.getByText('Waiting for the host to choose a ticket.')).toBeInTheDocument();
+  });
+
+  it('tells a host when no ticket is active', () => {
+    render(<CurrentTicket tickets={[ticket('t1', 'One')]} activeTicketId={null} isHost />);
+    expect(screen.getByText('No ticket is active. Choose one to start voting.')).toBeInTheDocument();
+  });
+
+  it('tells other participants when there are no tickets yet', () => {
+    render(<CurrentTicket tickets={[]} activeTicketId={null} isHost={false} />);
+    expect(screen.getByText('Waiting for the host to add a ticket.')).toBeInTheDocument();
+  });
+
+  it('shows a host no hint when there are no tickets yet', () => {
+    render(<CurrentTicket tickets={[]} activeTicketId={null} isHost />);
+    expect(screen.queryByText(/Waiting for the host|No ticket is active/)).not.toBeInTheDocument();
+  });
+});
+
+describe('VoteResults', () => {
+  const users = [
+    { id: 'u1', name: 'Sam' },
+    { id: 'u2', name: 'Kim' },
+    { id: 'u3', name: 'Lee' },
+  ];
+  const rows = () => within(screen.getByRole('list', { name: 'Vote frequency' })).getAllByRole('listitem');
+
+  it('labels the single most common value', () => {
+    render(<VoteResults users={users} votes={{ u1: '5', u2: '5', u3: '8' }} />);
+    expect(rows().map((row) => within(row).queryByText('Most common') !== null)).toEqual([true, false]);
+    expect(screen.getByRole('meter', { name: '5: 2 votes' })).toBeInTheDocument();
+  });
+
+  it('labels every value tied for the most votes', () => {
+    render(<VoteResults users={users} votes={{ u1: '3', u2: '8' }} />);
+    expect(rows().map((row) => within(row).queryByText('Most common') !== null)).toEqual([true, true]);
+  });
+
+  it('labels nothing when there are no votes', () => {
+    render(<VoteResults users={users} votes={{}} />);
+    expect(screen.queryByText('Most common')).not.toBeInTheDocument();
   });
 });
