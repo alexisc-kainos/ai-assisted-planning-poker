@@ -27,6 +27,7 @@ export interface RoomState {
   deck?: string;
   tickets: RoomTicket[];
   activeTicketId: string | null;
+  round: number;
   users: RosterUser[];
   votes: Record<string, string> | null;
   myVote: string | null;
@@ -38,7 +39,7 @@ export type ServerMessage =
   | { type: 'error'; message: string };
 
 export type ClientMessage =
-  | { type: 'vote'; value: string }
+  | { type: 'vote'; value: string; round: number }
   | { type: 'reveal' }
   | { type: 'reset' }
   | { type: 'addTicket'; ticket: Ticket }

@@ -143,8 +143,11 @@ describe('TicketPanel', () => {
 
   const renderPanel = (props: Partial<Parameters<typeof TicketPanel>[0]> = {}) => {
     const handlers = { onAdd: vi.fn(), onEdit: vi.fn(), onRemove: vi.fn(), onSelect: vi.fn() };
-    render(<TicketPanel tickets={[]} activeTicketId={null} isHost {...handlers} {...props} />);
-    return handlers;
+    const panel = (next: Partial<Parameters<typeof TicketPanel>[0]>) => (
+      <TicketPanel tickets={[]} activeTicketId={null} isHost {...handlers} {...next} />
+    );
+    const { rerender } = render(panel(props));
+    return { ...handlers, update: (next: Partial<Parameters<typeof TicketPanel>[0]>) => rerender(panel(next)) };
   };
 
   it('lets the host add a story ticket with Spike shown but disabled', async () => {
@@ -159,6 +162,22 @@ describe('TicketPanel', () => {
     await user.type(screen.getByLabelText('What are we estimating?'), '  Login{Enter}page  ');
     await user.click(submit);
     expect(onAdd).toHaveBeenCalledWith('Login\npage');
+  });
+
+  it('keeps the add draft until the server broadcasts the new ticket', async () => {
+    const existing = ticket('t1', 'Signup');
+    const { onAdd, update } = renderPanel({ tickets: [existing] });
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
+    await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+    expect(onAdd).toHaveBeenCalledWith('Signup');
+    expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+
+    update({ tickets: [{ ...existing }] });
+    expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+
+    update({ tickets: [existing, ticket('t2', 'Signup')] });
+    expect(screen.getByLabelText('What are we estimating?')).toHaveValue('');
   });
 
   it('validates blank and over-long ticket text', async () => {
@@ -202,8 +221,8 @@ describe('TicketPanel', () => {
     expect(onSelect).toHaveBeenCalledWith('t3');
   });
 
-  it('edits a ticket inline, including the active one, and can cancel', async () => {
-    const { onEdit } = renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: 't1' });
+  it('edits a ticket inline, including the active one, keeping the draft until the server confirms', async () => {
+    const { onEdit, update } = renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: 't1' });
     const user = userEvent.setup();
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
@@ -216,7 +235,11 @@ describe('TicketPanel', () => {
     await user.type(editor, ' One with SSO ');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(onEdit).toHaveBeenCalledWith('t1', 'One with SSO');
+    expect(screen.getByLabelText('Edit ticket text')).toHaveValue(' One with SSO ');
+
+    update({ tickets: [ticket('t1', 'One with SSO')], activeTicketId: 't1' });
     expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
+    expect(screen.getByText('One with SSO', { selector: 'li p' })).toBeInTheDocument();
   });
 
   it('removes a ticket only after the host confirms', async () => {

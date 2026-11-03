@@ -49,7 +49,7 @@ export interface Ticket {
 }
 
 export type ClientMessage =
-  | { type: 'vote'; value: string }
+  | { type: 'vote'; value: string; round: number }
   | { type: 'reveal' }
   | { type: 'reset' }
   | { type: 'addTicket'; ticket: Ticket }
@@ -83,11 +83,12 @@ export function parseClientMessage(raw: string): ParseResult {
   const message = data as Record<string, unknown>;
   switch (message.type) {
     case 'vote': {
-      const { value } = message;
+      const { value, round } = message;
       if (typeof value !== 'string') return { ok: false, error: 'Invalid vote message' };
+      if (!Number.isSafeInteger(round) || (round as number) < 0) return { ok: false, error: 'Invalid vote message' };
       const length = charLength(value.trim());
       if (length < 1 || length > MAX_VOTE_LENGTH) return { ok: false, error: 'Invalid vote message' };
-      return { ok: true, message: { type: 'vote', value } };
+      return { ok: true, message: { type: 'vote', value, round: round as number } };
     }
     case 'reveal':
       return { ok: true, message: { type: 'reveal' } };

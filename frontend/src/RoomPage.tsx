@@ -69,7 +69,11 @@ export function RoomPage({ roomId }: { roomId: string }) {
           onRemove={removeTicket}
           onSelect={selectTicket}
         />
-        <VoteDeck selected={state.myVote} disabled={state.revealed} onVote={vote} />
+        <VoteDeck
+          selected={state.myVote}
+          disabled={state.revealed}
+          onVote={(value) => vote(value, state.round)}
+        />
         {userId === state.hostId && (
           <section className="card" aria-labelledby="voting-controls-heading">
             <h2 id="voting-controls-heading">Voting controls</h2>

@@ -83,6 +83,7 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
     { "id": "ticket-4d5e6f", "type": "story", "content": "As a user I want to log out", "result": null }
   ],
   "activeTicketId": "ticket-4d5e6f",
+  "round": 3,
   "users": [
     { "id": "user-abc123", "name": "Alice", "avatar": "capybara", "hasVoted": true },
     { "id": "user-def456", "name": "Bob", "avatar": "penguin", "hasVoted": false }
@@ -100,6 +101,7 @@ Broadcast to **all** clients in a room whenever anything changes (join, leave, v
 - `tickets` is the room's ticket list (at most 10), in the order added. It is always present (`[]` when empty), survives host changes and is discarded with the room. Ticket `id`s are server-generated (`ticket-<hex>`) and unique within the room. Duplicate `content` is allowed.
 - `tickets[].result` is the snapshot taken the last time votes were revealed while that ticket was active, or `null` if never revealed. `result.users` lists everyone in the room at reveal time in join order (`avatar` omitted when absent), and `result.votes` maps those user ids to their values (non-voters are absent). It is not changed by `reset`, switching tickets, editing the ticket, or users leaving; the next reveal on that ticket overwrites it.
 - `activeTicketId` is the id of the ticket currently being voted on, or `null` when none is active. Tickets never become active automatically.
+- `round` identifies the current voting round. It starts at `0` and increases by one whenever the round is cleared: a successful `reset`, `selectTicket`, or removing the active ticket. Clients send it back with every `vote` so votes cast for an earlier round are rejected.
 - `users` is ordered by join order (`seq`). `users[].avatar` is included only when that connection provided a non-blank `avatar`; otherwise it is omitted.
 - A user disconnecting mid-round is removed from `users[]` and from the `votes` map; no auto-reveal flip occurs. If a host disconnects, the roster change and the host-promotion ride the same `state` message.
 - Reconnects are fresh users (new `id`, new `seq`, no vote) and do not regain host, even if they were the original host.
@@ -119,6 +121,7 @@ The full error vocabulary:
 | JSON parse failure | `Malformed message` |
 | Missing or unknown `type` | `Unknown message type` |
 | Known `type`, bad shape (e.g. `vote` without `value`, `vote.value` non-string) | `Invalid <type> message` |
+| `vote` whose `round` is not the current `state.round` | `Vote was for a previous round` |
 | `vote` while `revealed === true` | `Voting is locked until reset` |
 | `reveal` by non-host | `Only the host can reveal votes` |
 | `reset` by non-host | `Only the host can reset votes` |
@@ -143,8 +146,10 @@ The socket is kept open after any `error` except where noted.
 ### `vote`
 
 ```json
-{ "type": "vote", "value": "5" }
+{ "type": "vote", "value": "5", "round": 3 }
 ```
+
+`round` is required and must be a non-negative integer; send the `round` from the latest `state`. A vote for any other round is rejected with `Vote was for a previous round`, so a vote in flight when the host switches ticket or resets is never counted against the new round. Missing or non-integer `round` is rejected with `Invalid vote message`.
 
 `value` is a free-form string (so any deck — Fibonacci, T-shirt sizes, "?", "☕", etc. — works without backend changes). Bounds: 1–64 chars after trim, no character restrictions. Sending `vote` with a numeric value (e.g. `5` instead of `"5"`) is rejected with `Invalid vote message`. Re-voting before reveal overwrites the previous vote. `vote` after `reveal` is rejected with `Voting is locked until reset`. Voting does not require a ticket to be active, and there is no way to withdraw a vote other than `reset`.
 

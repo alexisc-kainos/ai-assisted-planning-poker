@@ -78,7 +78,7 @@ export function createAppServer(config: Config): AppServer {
       let error: string | null;
       switch (message.type) {
         case 'vote':
-          error = conn.room.vote(conn.userId, message.value);
+          error = conn.room.vote(conn.userId, message.value, message.round);
           break;
         case 'reveal':
           error = conn.room.reveal(conn.userId);

@@ -106,7 +106,7 @@ export function useRoom(roomId: string) {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
   }, []);
 
-  const vote = useCallback((value: string) => send({ type: 'vote', value }), [send]);
+  const vote = useCallback((value: string, round: number) => send({ type: 'vote', value, round }), [send]);
 
   const reveal = useCallback(() => send({ type: 'reveal' }), [send]);
 

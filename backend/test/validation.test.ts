@@ -66,18 +66,22 @@ describe('parseClientMessage', () => {
     ['[]', 'Unknown message type'],
     ['{}', 'Unknown message type'],
     ['{"type":"dance"}', 'Unknown message type'],
-    ['{"type":"vote"}', 'Invalid vote message'],
-    ['{"type":"vote","value":5}', 'Invalid vote message'],
-    ['{"type":"vote","value":"   "}', 'Invalid vote message'],
-    [JSON.stringify({ type: 'vote', value: 'x'.repeat(65) }), 'Invalid vote message'],
+    ['{"type":"vote","round":0}', 'Invalid vote message'],
+    ['{"type":"vote","value":5,"round":0}', 'Invalid vote message'],
+    ['{"type":"vote","value":"   ","round":0}', 'Invalid vote message'],
+    [JSON.stringify({ type: 'vote', value: 'x'.repeat(65), round: 0 }), 'Invalid vote message'],
+    ['{"type":"vote","value":"5"}', 'Invalid vote message'],
+    ['{"type":"vote","value":"5","round":"0"}', 'Invalid vote message'],
+    ['{"type":"vote","value":"5","round":-1}', 'Invalid vote message'],
+    ['{"type":"vote","value":"5","round":1.5}', 'Invalid vote message'],
   ])('rejects %s with %s', (raw, error) => {
     expect(parseClientMessage(raw)).toEqual({ ok: false, error });
   });
 
   it('keeps vote value verbatim', () => {
-    expect(parseClientMessage('{"type":"vote","value":" 5 "}')).toEqual({
+    expect(parseClientMessage('{"type":"vote","value":" 5 ","round":3}')).toEqual({
       ok: true,
-      message: { type: 'vote', value: ' 5 ' },
+      message: { type: 'vote', value: ' 5 ', round: 3 },
     });
   });
 

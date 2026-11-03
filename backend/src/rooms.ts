@@ -26,6 +26,7 @@ export interface StateMessage {
   deck?: string;
   tickets: RoomTicket[];
   activeTicketId: string | null;
+  round: number;
   users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean }>;
   votes: Record<string, string> | null;
   myVote: string | null;
@@ -38,6 +39,7 @@ export class Room {
   revealed = false;
   tickets: RoomTicket[] = [];
   activeTicketId: string | null = null;
+  round = 0;
 
   constructor(
     readonly id: string,
@@ -71,7 +73,8 @@ export class Room {
   }
 
   /** Each action returns an error message, or null when state changed. */
-  vote(userId: string, value: string): string | null {
+  vote(userId: string, value: string, round: number): string | null {
+    if (round !== this.round) return 'Vote was for a previous round';
     if (this.revealed) return 'Voting is locked until reset';
     const member = this.members.get(userId);
     if (member) member.vote = value;
@@ -149,6 +152,7 @@ export class Room {
       revealed: this.revealed,
       tickets: this.tickets,
       activeTicketId: this.activeTicketId,
+      round: this.round,
       users: members.map(({ id, name, avatar, vote }) => ({
         id,
         name,
@@ -173,6 +177,7 @@ export class Room {
   }
 
   private clearRound(): void {
+    this.round += 1;
     this.revealed = false;
     for (const member of this.members.values()) delete member.vote;
   }

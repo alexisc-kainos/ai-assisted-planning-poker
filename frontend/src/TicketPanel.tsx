@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import type { RoomTicket } from './types';
 import { MAX_TICKETS, ticketError } from './validation';
 import { VoteResults } from './VoteResults';
@@ -36,10 +36,6 @@ function TicketTextForm({ label, submitLabel, initial = '', disabled, onSubmit, 
     setTouched(true);
     if (error || disabled) return;
     onSubmit(content.trim());
-    if (!initial) {
-      setContent('');
-      setTouched(false);
-    }
   };
 
   return (
@@ -74,8 +70,25 @@ function TicketTextForm({ label, submitLabel, initial = '', disabled, onSubmit, 
   );
 }
 
-function AddTicketForm({ count, onAdd }: { count: number; onAdd: (content: string) => void }) {
-  const full = count >= MAX_TICKETS;
+function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: (content: string) => void }) {
+  const [pending, setPending] = useState<{ content: string; knownIds: Set<string> } | null>(null);
+  const [formKey, setFormKey] = useState(0);
+  const full = tickets.length >= MAX_TICKETS;
+
+  // Clear the draft only once the server broadcasts the new ticket, so a rejection keeps it.
+  useEffect(() => {
+    if (!pending) return;
+    if (tickets.some((ticket) => !pending.knownIds.has(ticket.id) && ticket.content === pending.content)) {
+      setPending(null);
+      setFormKey((key) => key + 1);
+    }
+  }, [tickets, pending]);
+
+  const add = (content: string) => {
+    setPending({ content, knownIds: new Set(tickets.map((ticket) => ticket.id)) });
+    onAdd(content);
+  };
+
   return (
     <div className="ticket-add">
       <fieldset className="field">
@@ -89,7 +102,13 @@ function AddTicketForm({ count, onAdd }: { count: number; onAdd: (content: strin
           </label>
         </div>
       </fieldset>
-      <TicketTextForm label="What are we estimating?" submitLabel="Add ticket" disabled={full} onSubmit={onAdd} />
+      <TicketTextForm
+        key={formKey}
+        label="What are we estimating?"
+        submitLabel="Add ticket"
+        disabled={full}
+        onSubmit={add}
+      />
       {full && (
         <p className="hint" role="status">
           You've reached the limit of {MAX_TICKETS} tickets. Remove one to add another.
@@ -106,8 +125,22 @@ interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTick
 
 function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: TicketItemProps) {
   const [editing, setEditing] = useState(false);
+  const [pendingEdit, setPendingEdit] = useState<string | null>(null);
   const [showResults, setShowResults] = useState(false);
   const resultsId = useId();
+
+  // Close the editor only once the server broadcasts the saved text, so a rejection keeps the draft.
+  useEffect(() => {
+    if (pendingEdit !== null && ticket.content === pendingEdit) {
+      setPendingEdit(null);
+      setEditing(false);
+    }
+  }, [ticket.content, pendingEdit]);
+
+  const stopEditing = () => {
+    setPendingEdit(null);
+    setEditing(false);
+  };
 
   const remove = () => {
     if (window.confirm(`Remove this ticket?\n\n${ticket.content}`)) onRemove(ticket.id);
@@ -126,11 +159,11 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
           submitLabel="Save"
           initial={ticket.content}
           onSubmit={(content) => {
+            setPendingEdit(content);
             onEdit(ticket.id, content);
-            setEditing(false);
           }}
         >
-          <button type="button" onClick={() => setEditing(false)}>
+          <button type="button" onClick={stopEditing}>
             Cancel
           </button>
         </TicketTextForm>
@@ -205,7 +238,7 @@ export function TicketPanel({ tickets, activeTicketId, isHost, onAdd, ...itemPro
           ))}
         </ol>
       )}
-      {isHost && <AddTicketForm count={tickets.length} onAdd={onAdd} />}
+      {isHost && <AddTicketForm tickets={tickets} onAdd={onAdd} />}
     </section>
   );
 }

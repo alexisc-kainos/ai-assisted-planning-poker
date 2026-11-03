@@ -145,6 +145,7 @@ describe('RoomPage', () => {
         { id: 'ticket-2', type: 'story', content: 'Logout', result: null },
       ],
       activeTicketId: 'ticket-1',
+      round: 0,
       users: [
         { id: 'user-a', name: 'Alice', avatar: 'cat', hasVoted: false },
         { id: 'user-b', name: 'Bob', avatar: 'penguin', hasVoted: myVote !== null },
@@ -172,12 +173,12 @@ describe('RoomPage', () => {
       expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
 
       await user.click(screen.getByRole('button', { name: '5' }));
-      expect(ws.sent).toEqual([{ type: 'vote', value: '5' }]);
+      expect(ws.sent).toEqual([{ type: 'vote', value: '5', round: 0 }]);
       ws.emit(roomState('5'));
       expect(pressed('5')).toBe('true');
 
       await user.click(screen.getByRole('button', { name: '13' }));
-      expect(ws.sent.at(-1)).toEqual({ type: 'vote', value: '13' });
+      expect(ws.sent.at(-1)).toEqual({ type: 'vote', value: '13', round: 0 });
       ws.emit(roomState('13'));
       expect(pressed('13')).toBe('true');
       expect(pressed('5')).toBe('false');
@@ -196,6 +197,16 @@ describe('RoomPage', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Rate limit exceeded');
     });
 
+    it('tags my vote with the round from the latest state', async () => {
+      const ws = await joinAs('user-b');
+      ws.emit({ ...roomState(null), activeTicketId: 'ticket-2', round: 4 });
+      await userEvent.setup().click(screen.getByRole('button', { name: '8' }));
+      expect(ws.sent).toEqual([{ type: 'vote', value: '8', round: 4 }]);
+
+      ws.emit({ type: 'error', message: 'Vote was for a previous round' });
+      expect(screen.getByRole('alert')).toHaveTextContent('Vote was for a previous round');
+    });
+
     it('clears my highlighted card when the server says I have no vote', async () => {
       const ws = await joinAs('user-b');
       await userEvent.setup().click(screen.getByRole('button', { name: '8' }));
@@ -212,7 +223,7 @@ describe('RoomPage', () => {
 
       await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
       await user.click(screen.getByRole('button', { name: 'Add ticket' }));
-      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('');
+      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
 
       const tickets = within(screen.getByRole('list', { name: 'Tickets' })).getAllByRole('listitem');
       expect(tickets[0]).toHaveAttribute('aria-current', 'true');
@@ -275,10 +286,19 @@ describe('RoomPage', () => {
       expect(screen.queryByRole('heading', { name: 'Previous results' })).not.toBeInTheDocument();
     });
 
-    it('shows the server error when the ticket cap is hit', async () => {
+    it('keeps the add draft when the server rejects it and clears it once the ticket is added', async () => {
       const ws = await joinAs('user-b', 'user-b');
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
+      await user.click(screen.getByRole('button', { name: 'Add ticket' }));
       ws.emit({ type: 'error', message: 'A room can have at most 10 tickets' });
       expect(screen.getByRole('alert')).toHaveTextContent('A room can have at most 10 tickets');
+      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+
+      await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+      const base = roomState(null, 'user-b');
+      ws.emit({ ...base, tickets: [...base.tickets, { id: 'ticket-3', type: 'story', content: 'Signup', result: null }] });
+      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('');
     });
 
     it('shows voting controls only to the current host and sends reveal/reset messages', async () => {
