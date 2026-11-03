@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomPage } from '../RoomPage';
@@ -204,6 +204,115 @@ describe('RoomPage', () => {
       await user.type(textarea, 'Logout');
       await user.click(screen.getByRole('button', { name: 'Update ticket' }));
       expect(ws.sent).toEqual([{ type: 'setTicket', ticket: { type: 'story', content: 'Logout' } }]);
+    });
+
+    it('shows voting controls only to the current host and sends reveal/reset messages', async () => {
+      const ws = await joinAs('user-b');
+      expect(screen.queryByRole('button', { name: 'Reveal votes' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Reset votes' })).not.toBeInTheDocument();
+
+      ws.emit(roomState(null, 'user-b'));
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: 'Reveal votes' }));
+      await user.click(screen.getByRole('button', { name: 'Reset votes' }));
+
+      expect(ws.sent.slice(-2)).toEqual([{ type: 'reveal' }, { type: 'reset' }]);
+    });
+
+    it('shows frequency-sorted votes and each participant result', async () => {
+      const ws = await joinAs('user-b');
+      ws.emit({
+        ...roomState(null),
+        revealed: true,
+        users: [
+          { id: 'user-a', name: 'Sam', hasVoted: true },
+          { id: 'user-b', name: 'Sam', hasVoted: true },
+          { id: 'user-c', name: 'Ava', hasVoted: true },
+          { id: 'user-d', name: 'Lee', hasVoted: true },
+          { id: 'user-e', name: 'Moe', hasVoted: true },
+          { id: 'user-f', name: 'Kai', hasVoted: true },
+          { id: 'user-g', name: 'Noah', hasVoted: false },
+        ],
+        votes: {
+          'user-a': '5',
+          'user-b': '3',
+          'user-c': '1',
+          'user-d': 'mystery-z',
+          'user-e': 'mystery-a',
+          'user-f': '5',
+        },
+      });
+
+      expect(within(screen.getByRole('list', { name: 'Vote frequency' })).getAllByRole('meter').map((meter) => meter.getAttribute('aria-label'))).toEqual([
+        '5: 2 votes',
+        '1: 1 vote',
+        '3: 1 vote',
+        'mystery-z: 1 vote',
+        'mystery-a: 1 vote',
+      ]);
+      const participants = within(screen.getByRole('list', { name: 'Participant votes' }));
+      const rows = participants.getAllByRole('listitem');
+      expect(rows[0]).toHaveTextContent('Sam (1)5');
+      expect(rows[1]).toHaveTextContent('Sam (2)3');
+      expect(rows[6]).toHaveTextContent('NoahNo vote');
+    });
+
+    it('shows an empty graph when votes are revealed before anyone votes', async () => {
+      const ws = await joinAs('user-b');
+      ws.emit({ ...roomState(null), revealed: true, votes: {} });
+
+      expect(screen.getByRole('status')).toHaveTextContent('No votes to graph yet.');
+      expect(within(screen.getByRole('list', { name: 'Participant votes' })).getAllByText('No vote')).toHaveLength(2);
+    });
+
+    it.each([
+      {
+        label: 'already revealed',
+        revealed: true,
+        votes: { 'user-a': '5' },
+        action: 'Reveal votes',
+        message: 'Votes are already revealed',
+      },
+      {
+        label: 'already reset',
+        revealed: false,
+        votes: null,
+        action: 'Reset votes',
+        message: 'Votes are already reset',
+      },
+    ])('shows the server error when votes are $label without changing the view', async ({ revealed, votes, action, message }) => {
+      const ws = await joinAs('user-a', 'user-a');
+      ws.emit({ ...roomState(null, 'user-a'), revealed, votes });
+      await userEvent.setup().click(screen.getByRole('button', { name: action }));
+      ws.emit({ type: 'error', message });
+
+      expect(screen.getByRole('alert')).toHaveTextContent(message);
+      expect(screen.queryByText('No votes to graph yet.')).not.toBeInTheDocument();
+      if (revealed) {
+        expect(screen.getByRole('heading', { name: 'Vote results' })).toBeInTheDocument();
+        expect(screen.getByRole('meter', { name: '5: 1 vote' })).toBeInTheDocument();
+      } else {
+        expect(screen.queryByRole('heading', { name: 'Vote results' })).not.toBeInTheDocument();
+      }
+    });
+
+    it('clears revealed results after a successful reset broadcast', async () => {
+      const ws = await joinAs('user-a', 'user-a');
+      ws.emit({ ...roomState(null, 'user-a'), revealed: true, votes: { 'user-a': '5' } });
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Reset votes' }));
+      expect(ws.sent.at(-1)).toEqual({ type: 'reset' });
+
+      ws.emit({
+        ...roomState(null, 'user-a'),
+        revealed: false,
+        users: [
+          { id: 'user-a', name: 'Alice', hasVoted: false },
+          { id: 'user-b', name: 'Bob', hasVoted: false },
+        ],
+        votes: null,
+      });
+      expect(screen.queryByRole('heading', { name: 'Vote results' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '5' })).toBeEnabled();
     });
   });
 
