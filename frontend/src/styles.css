@@ -267,6 +267,19 @@ textarea[aria-invalid='true'] {
   border: 1px solid var(--pastel-lilac);
 }
 
+.badge.spectating {
+  background: var(--pastel-sky);
+  color: #2a4f6b;
+}
+
+.spectate-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .ticket-form {
   display: flex;
   flex-direction: column;

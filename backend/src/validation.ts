@@ -19,6 +19,7 @@ export interface ConnectParams {
   name: string;
   deck?: string;
   avatar?: string;
+  spectating?: boolean;
 }
 
 type OptionalResult = { ok: true; value?: string } | { ok: false };
@@ -40,7 +41,10 @@ export function parseConnectParams(params: URLSearchParams): ConnectParams | nul
   const avatar = parseOptional(params.get('avatar'), MAX_AVATAR_LENGTH);
   if (!deck.ok || !avatar.ok) return null;
 
-  return { room, name, deck: deck.value, avatar: avatar.value };
+  const spectating = params.get('spectating');
+  if (spectating !== null && spectating !== '1') return null;
+
+  return { room, name, deck: deck.value, avatar: avatar.value, ...(spectating ? { spectating: true } : {}) };
 }
 
 export type TicketType = 'story' | 'spike';
@@ -59,7 +63,8 @@ export type ClientMessage =
   | { type: 'addTicket'; ticket: Ticket }
   | { type: 'editTicket'; ticketId: string; content: string; ticketType?: TicketType }
   | { type: 'removeTicket'; ticketId: string }
-  | { type: 'selectTicket'; ticketId: string };
+  | { type: 'selectTicket'; ticketId: string }
+  | { type: 'setSpectating'; spectating: boolean };
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };
 
@@ -120,6 +125,11 @@ export function parseClientMessage(raw: string): ParseResult {
       const { type, ticketId } = message;
       if (!isTicketId(ticketId)) return { ok: false, error: `Invalid ${type} message` };
       return { ok: true, message: { type, ticketId } };
+    }
+    case 'setSpectating': {
+      const { spectating } = message;
+      if (typeof spectating !== 'boolean') return { ok: false, error: 'Invalid setSpectating message' };
+      return { ok: true, message: { type: 'setSpectating', spectating } };
     }
     default:
       return { ok: false, error: 'Unknown message type' };

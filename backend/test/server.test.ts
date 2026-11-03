@@ -37,7 +37,7 @@ describe('create and join handshake', () => {
       tickets: [],
       activeTicketId: null,
       round: 0,
-      users: [{ id: first.userId, name: 'Alice', avatar: 'capybara', hasVoted: false }],
+      users: [{ id: first.userId, name: 'Alice', avatar: 'capybara', hasVoted: false, spectating: false }],
       votes: null,
       myVote: null,
     });
@@ -55,8 +55,8 @@ describe('create and join handshake', () => {
     const expected = {
       hostId: aliceId,
       users: [
-        { id: aliceId, name: 'Alice', avatar: 'cat', hasVoted: false },
-        { id: bobId, name: 'Bob', avatar: 'dog', hasVoted: false },
+        { id: aliceId, name: 'Alice', avatar: 'cat', hasVoted: false, spectating: false },
+        { id: bobId, name: 'Bob', avatar: 'dog', hasVoted: false, spectating: false },
       ],
     };
     const [aliceView, bobView] = [await alice.next('state'), await bob.next('state')];
@@ -85,7 +85,14 @@ describe('create and join handshake', () => {
     await start();
     const client = await connect(port, { room: ROOM, name: '  Dana  ', avatar: '  ' });
     const state = await client.next('state');
-    expect(state.users[0]).toEqual({ id: expect.any(String), name: 'Dana', hasVoted: false });
+    expect(state.users[0]).toEqual({ id: expect.any(String), name: 'Dana', hasVoted: false, spectating: false });
+  });
+
+  it('joins as a spectator with spectating=1', async () => {
+    await start();
+    const client = await connect(port, { room: ROOM, name: 'Eve', spectating: '1' });
+    const state = await client.next('state');
+    expect(state.users[0]).toMatchObject({ name: 'Eve', spectating: true });
   });
 
   it.each([
@@ -96,6 +103,7 @@ describe('create and join handshake', () => {
     ['name over 32 chars', { room: ROOM, name: 'x'.repeat(33) }],
     ['deck over 32 chars', { room: ROOM, name: 'Alice', deck: 'd'.repeat(33) }],
     ['avatar over 32 chars', { room: ROOM, name: 'Alice', avatar: 'a'.repeat(33) }],
+    ['invalid spectating', { room: ROOM, name: 'Alice', spectating: 'true' }],
   ])('rejects the upgrade with 400 for %s', async (_label, params) => {
     await start();
     expect(await rejectedStatus(port, params as Record<string, string>)).toBe(400);
@@ -708,6 +716,123 @@ describe('ticket list', () => {
     const state = await act(guest, [], { type: 'editTicket', ticketId: first, content: 'Logout' });
     expect(state.tickets[0].content).toBe('Logout');
   });
+});
+
+describe('participate and spectate', () => {
+  let round = 0;
+
+  async function twoUsers() {
+    round = 0;
+    await start();
+    const host = await connect(port, { room: ROOM, name: 'Host' });
+    const { userId: hostId } = await host.next('welcome');
+    const guest = await connect(port, { room: ROOM, name: 'Guest' });
+    const { userId: guestId } = await guest.next('welcome');
+    await host.settledState();
+    await guest.settledState();
+    return { host, guest, hostId, guestId };
+  }
+
+  async function act(sender: TestClient, others: TestClient[], message: unknown): Promise<Message> {
+    sender.send(message);
+    const state = await sender.next('state');
+    for (const other of others) await other.next('state');
+    round = state.round;
+    return state;
+  }
+
+  const spectate = (spectating: unknown) => ({ type: 'setSpectating', spectating });
+  const user = (state: Message, id: string) => state.users.find((u: Message) => u.id === id);
+
+  it('broadcasts switching to spectating and back to everyone', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    guest.send(spectate(true));
+    const [hostView, guestView] = [await host.next('state'), await guest.next('state')];
+    expect(user(hostView, guestId).spectating).toBe(true);
+    expect(user(guestView, guestId).spectating).toBe(true);
+
+    const back = await act(guest, [host], spectate(false));
+    expect(user(back, guestId).spectating).toBe(false);
+  });
+
+  it('rejects votes from a spectator, and accepts them after switching back', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    await act(guest, [host], spectate(true));
+    guest.send(vote('5', round));
+    expect((await guest.next('error')).message).toBe('Spectators cannot vote');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(host.messages).toEqual([]);
+
+    await act(guest, [host], spectate(false));
+    const voted = await act(guest, [host], vote('5', round));
+    expect(user(voted, guestId).hasVoted).toBe(true);
+  });
+
+  it('discards an unrevealed vote when switching to spectating', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    await act(guest, [host], vote('5', round));
+    const state = await act(guest, [host], spectate(true));
+    expect(user(state, guestId).hasVoted).toBe(false);
+    expect(state.myVote).toBeNull();
+
+    const revealed = await act(host, [guest], { type: 'reveal' });
+    expect(revealed.votes).toEqual({});
+  });
+
+  it('keeps revealed votes and the stored result when switching after reveal', async () => {
+    const { host, guest, hostId, guestId } = await twoUsers();
+    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', content: 'One' } });
+    await act(host, [guest], { type: 'selectTicket', ticketId: added.tickets[0].id });
+    await act(guest, [host], vote('8', round));
+    await act(host, [guest], { type: 'reveal' });
+
+    const state = await act(guest, [host], spectate(true));
+    expect(state.votes).toEqual({ [guestId]: '8' });
+    expect(state.tickets[0].result).toEqual({
+      users: [
+        { id: hostId, name: 'Host' },
+        { id: guestId, name: 'Guest' },
+      ],
+      votes: { [guestId]: '8' },
+    });
+
+    const reset = await act(host, [guest], { type: 'reset' });
+    expect(user(reset, guestId)).toMatchObject({ spectating: true, hasVoted: false });
+  });
+
+  it('leaves spectators without a vote out of the stored result', async () => {
+    const { host, guest, guestId } = await twoUsers();
+    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', content: 'One' } });
+    await act(host, [guest], { type: 'selectTicket', ticketId: added.tickets[0].id });
+    await act(host, [guest], spectate(true));
+    await act(guest, [host], vote('3', round));
+
+    const revealed = await act(host, [guest], { type: 'reveal' });
+    expect(revealed.tickets[0].result).toEqual({ users: [{ id: guestId, name: 'Guest' }], votes: { [guestId]: '3' } });
+  });
+
+  it('lets a spectating host keep every host action', async () => {
+    const { host, guest, hostId } = await twoUsers();
+    const spectating = await act(host, [guest], spectate(true));
+    expect(spectating.hostId).toBe(hostId);
+
+    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', content: 'One' } });
+    await act(host, [guest], { type: 'selectTicket', ticketId: added.tickets[0].id });
+    await act(guest, [host], vote('5', round));
+    expect((await act(host, [guest], { type: 'reveal' })).revealed).toBe(true);
+    expect((await act(host, [guest], { type: 'reset' })).revealed).toBe(false);
+  });
+
+  it.each([['missing', undefined], ['string', 'true'], ['number', 1], ['null', null]])(
+    'rejects a %s spectating value without broadcasting',
+    async (_label, value) => {
+      const { host, guest } = await twoUsers();
+      guest.send(spectate(value));
+      expect((await guest.next('error')).message).toBe('Invalid setSpectating message');
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(host.messages).toEqual([]);
+    },
+  );
 });
 
 describe('rate limiting', () => {

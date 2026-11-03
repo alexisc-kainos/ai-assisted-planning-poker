@@ -5,6 +5,7 @@ export interface RosterUser {
   name: string;
   avatar?: string;
   hasVoted: boolean;
+  spectating: boolean;
 }
 
 export interface Ticket {
@@ -47,7 +48,8 @@ export type ClientMessage =
   | { type: 'addTicket'; ticket: Ticket }
   | { type: 'editTicket'; ticketId: string; content: string; ticketType?: TicketType }
   | { type: 'removeTicket'; ticketId: string }
-  | { type: 'selectTicket'; ticketId: string };
+  | { type: 'selectTicket'; ticketId: string }
+  | { type: 'setSpectating'; spectating: boolean };
 
 export interface RoomStatus {
   exists: boolean;

@@ -7,6 +7,7 @@ export interface Member {
   name: string;
   avatar?: string;
   vote?: string;
+  spectating: boolean;
 }
 
 export interface TicketResult {
@@ -27,7 +28,7 @@ export interface StateMessage {
   tickets: RoomTicket[];
   activeTicketId: string | null;
   round: number;
-  users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean }>;
+  users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean; spectating: boolean }>;
   votes: Record<string, string> | null;
   myVote: string | null;
 }
@@ -50,13 +51,13 @@ export class Room {
     return this.members.size;
   }
 
-  add(name: string, avatar?: string): Member {
+  add(name: string, avatar?: string, spectating = false): Member {
     let id: string;
     do {
       id = `user-${randomBytes(6).toString('hex')}`;
     } while (this.members.has(id));
 
-    const member: Member = { id, seq: this.nextSeq++, name, avatar };
+    const member: Member = { id, seq: this.nextSeq++, name, avatar, spectating };
     this.members.set(id, member);
     this.hostId ??= id;
     return member;
@@ -77,7 +78,17 @@ export class Room {
     if (round !== this.round) return 'Vote was for a previous round';
     if (this.revealed) return 'Voting is locked until reset';
     const member = this.members.get(userId);
+    if (member?.spectating) return 'Spectators cannot vote';
     if (member) member.vote = value;
+    return null;
+  }
+
+  setSpectating(userId: string, spectating: boolean): string | null {
+    const member = this.members.get(userId);
+    if (!member) return null;
+    member.spectating = spectating;
+    // Revealed votes stay put so results don't shift until reset.
+    if (spectating && !this.revealed) delete member.vote;
     return null;
   }
 
@@ -87,7 +98,7 @@ export class Room {
     this.revealed = true;
     const active = this.tickets.find((ticket) => ticket.id === this.activeTicketId);
     if (active) {
-      const members = this.orderedMembers();
+      const members = this.orderedMembers().filter((m) => !m.spectating || m.vote !== undefined);
       active.result = {
         users: members.map(({ id, name, avatar }) => ({ id, name, ...(avatar ? { avatar } : {}) })),
         votes: this.revealedVotes(members),
@@ -159,11 +170,12 @@ export class Room {
       tickets: this.tickets,
       activeTicketId: this.activeTicketId,
       round: this.round,
-      users: members.map(({ id, name, avatar, vote }) => ({
+      users: members.map(({ id, name, avatar, vote, spectating }) => ({
         id,
         name,
         ...(avatar ? { avatar } : {}),
         hasVoted: vote !== undefined,
+        spectating,
       })),
       votes: this.revealed ? this.revealedVotes(members) : null,
       myVote: this.members.get(forUserId)?.vote ?? null,

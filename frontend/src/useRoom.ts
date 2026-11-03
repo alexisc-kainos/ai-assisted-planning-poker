@@ -26,23 +26,28 @@ export function useRoom(roomId: string) {
   const [userId, setUserId] = useState<string | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
+  const spectatingRef = useRef(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const connect = useCallback(
     (name: string, avatar: string, reconnectAttempt: number | null = null) => {
       const params = new URLSearchParams({ room: roomId, name, avatar });
       if (isCreator(roomId)) params.set('deck', DEFAULT_DECK);
+      if (spectatingRef.current) params.set('spectating', '1');
 
       const ws = new WebSocket(`${WS_URL}/ws?${params}`);
       socketRef.current = ws;
       let welcomed = false;
+      let myId: string | null = null;
 
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data) as ServerMessage;
         if (message.type === 'welcome') {
           welcomed = true;
+          myId = message.userId;
           setUserId(message.userId);
         } else if (message.type === 'state') {
+          spectatingRef.current = message.users.find((user) => user.id === myId)?.spectating ?? false;
           setState(message);
           setStatus('joined');
           setError(null);
@@ -82,6 +87,7 @@ export function useRoom(roomId: string) {
     async (name: string, avatar: string) => {
       setStatus('checking');
       setError(null);
+      spectatingRef.current = false;
       let roomStatus: RoomStatus;
       try {
         roomStatus = await fetchRoomStatus(roomId);
@@ -127,6 +133,11 @@ export function useRoom(roomId: string) {
 
   const selectTicket = useCallback((ticketId: string) => send({ type: 'selectTicket', ticketId }), [send]);
 
+  const setSpectating = useCallback(
+    (spectating: boolean) => send({ type: 'setSpectating', spectating }),
+    [send],
+  );
+
   useEffect(
     () => () => {
       clearTimeout(reconnectTimer.current);
@@ -151,5 +162,6 @@ export function useRoom(roomId: string) {
     editTicket,
     removeTicket,
     selectTicket,
+    setSpectating,
   };
 }

@@ -77,9 +77,9 @@ describe('Roster', () => {
         hostId="user-1"
         meId="user-2"
         users={[
-          { id: 'user-1', name: 'Sam', avatar: 'penguin', hasVoted: false },
-          { id: 'user-2', name: 'Sam', avatar: 'penguin', hasVoted: false },
-          { id: 'user-3', name: 'Kim', hasVoted: false },
+          { id: 'user-1', name: 'Sam', avatar: 'penguin', hasVoted: false, spectating: false },
+          { id: 'user-2', name: 'Sam', avatar: 'penguin', hasVoted: false, spectating: false },
+          { id: 'user-3', name: 'Kim', hasVoted: false, spectating: false },
         ]}
       />,
     );
@@ -100,8 +100,8 @@ describe('Roster', () => {
         hostId="user-1"
         meId="user-1"
         users={[
-          { id: 'user-1', name: 'Sam', hasVoted: true },
-          { id: 'user-2', name: 'Kim', hasVoted: false },
+          { id: 'user-1', name: 'Sam', hasVoted: true, spectating: false },
+          { id: 'user-2', name: 'Kim', hasVoted: false, spectating: false },
         ]}
       />,
     );
@@ -110,6 +110,24 @@ describe('Roster', () => {
     expect(items[0]).not.toHaveTextContent('Waiting');
     expect(items[1]).toHaveTextContent('Waiting');
     expect(items[1]).not.toHaveTextContent('Voted');
+  });
+
+  it('marks spectators with a Spectating badge instead of Voted or Waiting', () => {
+    render(
+      <Roster
+        hostId="user-1"
+        meId="user-2"
+        users={[
+          { id: 'user-1', name: 'Sam', hasVoted: false, spectating: true },
+          { id: 'user-2', name: 'Kim', hasVoted: false, spectating: false },
+        ]}
+      />,
+    );
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('SamHostSpectating');
+    expect(items[0]).not.toHaveTextContent(/Voted|Waiting/);
+    expect(items[1]).toHaveTextContent('Waiting');
+    expect(items[1]).not.toHaveTextContent('Spectating');
   });
 });
 

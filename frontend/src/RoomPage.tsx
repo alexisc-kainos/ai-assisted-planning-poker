@@ -48,11 +48,14 @@ export function RoomPage({ roomId }: { roomId: string }) {
     editTicket,
     removeTicket,
     selectTicket,
+    setSpectating,
   } = useRoom(roomId);
   const url = joinUrl(roomId);
 
   if (status === 'joined' && state) {
     const ticketType = state.tickets.find((ticket) => ticket.id === state.activeTicketId)?.type ?? 'story';
+    const spectating = state.users.find((user) => user.id === userId)?.spectating ?? false;
+    const votes = state.votes ?? {};
     return (
       <>
         {error && (
@@ -70,12 +73,26 @@ export function RoomPage({ roomId }: { roomId: string }) {
           onRemove={removeTicket}
           onSelect={selectTicket}
         />
-        <VoteDeck
-          selected={state.myVote}
-          ticketType={ticketType}
-          disabled={state.revealed}
-          onVote={(value) => vote(value, state.round)}
-        />
+        <section className="card" aria-label="Participation">
+          <label className="spectate-toggle">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={spectating}
+              onChange={(e) => setSpectating(e.currentTarget.checked)}
+            />
+            Spectate
+          </label>
+          {spectating && <p className="hint">You're spectating — switch off to vote.</p>}
+        </section>
+        {!spectating && (
+          <VoteDeck
+            selected={state.myVote}
+            ticketType={ticketType}
+            disabled={state.revealed}
+            onVote={(value) => vote(value, state.round)}
+          />
+        )}
         {userId === state.hostId && (
           <section className="card" aria-labelledby="voting-controls-heading">
             <h2 id="voting-controls-heading">Voting controls</h2>
@@ -85,7 +102,13 @@ export function RoomPage({ roomId }: { roomId: string }) {
             </div>
           </section>
         )}
-        {state.revealed && <VoteResults users={state.users} votes={state.votes ?? {}} ticketType={ticketType} />}
+        {state.revealed && (
+          <VoteResults
+            users={state.users.filter((user) => !user.spectating || votes[user.id] !== undefined)}
+            votes={votes}
+            ticketType={ticketType}
+          />
+        )}
         <Roster users={state.users} hostId={state.hostId} meId={userId} />
       </>
     );
