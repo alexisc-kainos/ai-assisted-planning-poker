@@ -10,12 +10,23 @@ export interface Ticket {
   content: string;
 }
 
+export interface TicketResult {
+  users: Array<Pick<RosterUser, 'id' | 'name' | 'avatar'>>;
+  votes: Record<string, string>;
+}
+
+export interface RoomTicket extends Ticket {
+  id: string;
+  result: TicketResult | null;
+}
+
 export interface RoomState {
   type: 'state';
   hostId: string | null;
   revealed: boolean;
   deck?: string;
-  ticket: Ticket | null;
+  tickets: RoomTicket[];
+  activeTicketId: string | null;
   users: RosterUser[];
   votes: Record<string, string> | null;
   myVote: string | null;
@@ -30,7 +41,10 @@ export type ClientMessage =
   | { type: 'vote'; value: string }
   | { type: 'reveal' }
   | { type: 'reset' }
-  | { type: 'setTicket'; ticket: Ticket };
+  | { type: 'addTicket'; ticket: Ticket }
+  | { type: 'editTicket'; ticketId: string; content: string }
+  | { type: 'removeTicket'; ticketId: string }
+  | { type: 'selectTicket'; ticketId: string };
 
 export interface RoomStatus {
   exists: boolean;

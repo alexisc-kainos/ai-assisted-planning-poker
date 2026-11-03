@@ -1,12 +1,15 @@
+import { useId } from 'react';
 import { STORY_DECK } from './config';
 import type { RosterUser } from './types';
 
 interface VoteResultsProps {
-  users: RosterUser[];
+  users: Array<Pick<RosterUser, 'id' | 'name'>>;
   votes: Record<string, string>;
+  title?: string;
 }
 
-export function VoteResults({ users, votes }: VoteResultsProps) {
+export function VoteResults({ users, votes, title = 'Vote results' }: VoteResultsProps) {
+  const headingId = useId();
   const deckOrder = new Map<string, number>(STORY_DECK.map((value, index) => [value, index]));
   const counts = new Map<string, number>();
   const firstSeen = new Map<string, number>();
@@ -49,8 +52,8 @@ export function VoteResults({ users, votes }: VoteResultsProps) {
   }
 
   return (
-    <section className="card vote-results" aria-labelledby="results-heading">
-      <h2 id="results-heading">Vote results</h2>
+    <section className="card vote-results" aria-labelledby={headingId}>
+      <h2 id={headingId}>{title}</h2>
       <div className="vote-results-layout">
         <div>
           <h3>Frequency</h3>

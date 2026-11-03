@@ -5,6 +5,8 @@ export const MAX_DECK_LENGTH = 32;
 export const MAX_AVATAR_LENGTH = 32;
 export const MAX_VOTE_LENGTH = 64;
 export const MAX_TICKET_LENGTH = 500;
+export const MAX_TICKETS = 10;
+const MAX_TICKET_ID_LENGTH = 64;
 
 const charLength = (value: string): number => Array.from(value).length;
 
@@ -50,9 +52,23 @@ export type ClientMessage =
   | { type: 'vote'; value: string }
   | { type: 'reveal' }
   | { type: 'reset' }
-  | { type: 'setTicket'; ticket: Ticket };
+  | { type: 'addTicket'; ticket: Ticket }
+  | { type: 'editTicket'; ticketId: string; content: string }
+  | { type: 'removeTicket'; ticketId: string }
+  | { type: 'selectTicket'; ticketId: string };
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };
+
+function parseContent(content: unknown): string | null {
+  if (typeof content !== 'string') return null;
+  const trimmed = content.trim();
+  const length = charLength(trimmed);
+  return length >= 1 && length <= MAX_TICKET_LENGTH ? trimmed : null;
+}
+
+function isTicketId(value: unknown): value is string {
+  return typeof value === 'string' && value.length >= 1 && value.length <= MAX_TICKET_ID_LENGTH;
+}
 
 export function parseClientMessage(raw: string): ParseResult {
   let data: unknown;
@@ -77,16 +93,26 @@ export function parseClientMessage(raw: string): ParseResult {
       return { ok: true, message: { type: 'reveal' } };
     case 'reset':
       return { ok: true, message: { type: 'reset' } };
-    case 'setTicket': {
-      const invalid = { ok: false, error: 'Invalid setTicket message' } as const;
+    case 'addTicket': {
+      const invalid = { ok: false, error: 'Invalid addTicket message' } as const;
       const { ticket } = message;
       if (typeof ticket !== 'object' || ticket === null || Array.isArray(ticket)) return invalid;
       const { type, content } = ticket as Record<string, unknown>;
-      if (type !== 'story' || typeof content !== 'string') return invalid;
-      const trimmed = content.trim();
-      const length = charLength(trimmed);
-      if (length < 1 || length > MAX_TICKET_LENGTH) return invalid;
-      return { ok: true, message: { type: 'setTicket', ticket: { type, content: trimmed } } };
+      const trimmed = parseContent(content);
+      if (type !== 'story' || trimmed === null) return invalid;
+      return { ok: true, message: { type: 'addTicket', ticket: { type, content: trimmed } } };
+    }
+    case 'editTicket': {
+      const { ticketId } = message;
+      const content = parseContent(message.content);
+      if (!isTicketId(ticketId) || content === null) return { ok: false, error: 'Invalid editTicket message' };
+      return { ok: true, message: { type: 'editTicket', ticketId, content } };
+    }
+    case 'removeTicket':
+    case 'selectTicket': {
+      const { type, ticketId } = message;
+      if (!isTicketId(ticketId)) return { ok: false, error: `Invalid ${type} message` };
+      return { ok: true, message: { type, ticketId } };
     }
     default:
       return { ok: false, error: 'Unknown message type' };

@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { JoinForm } from '../JoinForm';
 import { Roster } from '../Roster';
 import { TicketPanel } from '../TicketPanel';
+import type { RoomTicket } from '../types';
 import { VoteDeck } from '../VoteDeck';
 
 describe('JoinForm', () => {
@@ -133,22 +134,35 @@ describe('VoteDeck', () => {
 });
 
 describe('TicketPanel', () => {
-  it('lets the host enter a story ticket with Spike shown but disabled', async () => {
-    const onSetTicket = vi.fn();
-    render(<TicketPanel ticket={null} isHost onSetTicket={onSetTicket} />);
+  const ticket = (id: string, content: string, result: RoomTicket['result'] = null): RoomTicket => ({
+    id,
+    type: 'story',
+    content,
+    result,
+  });
+
+  const renderPanel = (props: Partial<Parameters<typeof TicketPanel>[0]> = {}) => {
+    const handlers = { onAdd: vi.fn(), onEdit: vi.fn(), onRemove: vi.fn(), onSelect: vi.fn() };
+    render(<TicketPanel tickets={[]} activeTicketId={null} isHost {...handlers} {...props} />);
+    return handlers;
+  };
+
+  it('lets the host add a story ticket with Spike shown but disabled', async () => {
+    const { onAdd } = renderPanel();
+    expect(screen.getByRole('heading', { name: 'Tickets (0/10)' })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Story' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Spike' })).toBeDisabled();
 
     const user = userEvent.setup();
-    const submit = screen.getByRole('button', { name: 'Set ticket' });
+    const submit = screen.getByRole('button', { name: 'Add ticket' });
     expect(submit).toBeDisabled();
     await user.type(screen.getByLabelText('What are we estimating?'), '  Login{Enter}page  ');
     await user.click(submit);
-    expect(onSetTicket).toHaveBeenCalledWith('Login\npage');
+    expect(onAdd).toHaveBeenCalledWith('Login\npage');
   });
 
   it('validates blank and over-long ticket text', async () => {
-    render(<TicketPanel ticket={null} isHost onSetTicket={vi.fn()} />);
+    renderPanel();
     const user = userEvent.setup();
     const textarea = screen.getByLabelText('What are we estimating?');
     await user.type(textarea, '   ');
@@ -159,27 +173,94 @@ describe('TicketPanel', () => {
     await user.click(textarea);
     await user.paste('x'.repeat(501));
     expect(screen.getByRole('alert')).toHaveTextContent('Ticket must be 500 characters or fewer');
-    expect(screen.getByRole('button', { name: 'Set ticket' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add ticket' })).toBeDisabled();
   });
 
-  it('prefills the host editor with the current ticket', () => {
-    render(<TicketPanel ticket={{ type: 'story', content: 'Login' }} isHost onSetTicket={vi.fn()} />);
-    expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Login');
-    expect(screen.getByRole('button', { name: 'Update ticket' })).toBeEnabled();
+  it('blocks adding an 11th ticket with a clear message', async () => {
+    const { onAdd } = renderPanel({
+      tickets: Array.from({ length: 10 }, (_, i) => ticket(`t${i}`, `Ticket ${i + 1}`)),
+    });
+    expect(screen.getByRole('heading', { name: 'Tickets (10/10)' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent("You've reached the limit of 10 tickets.");
+    await userEvent.setup().type(screen.getByLabelText('What are we estimating?'), 'One more');
+    expect(screen.getByRole('button', { name: 'Add ticket' })).toBeDisabled();
+    expect(onAdd).not.toHaveBeenCalled();
   });
 
-  it('shows other participants the ticket as read-only text', () => {
-    render(
-      <TicketPanel ticket={{ type: 'story', content: '<b>Login</b>' }} isHost={false} onSetTicket={vi.fn()} />,
-    );
-    expect(screen.getByText('Story')).toBeInTheDocument();
+  it('marks the active ticket and lets the host switch to any other ticket', async () => {
+    const { onSelect } = renderPanel({
+      tickets: [ticket('t1', 'One'), ticket('t2', 'Two'), ticket('t3', 'Three')],
+      activeTicketId: 't1',
+    });
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveAttribute('aria-current', 'true');
+    expect(items[0]).toHaveTextContent('Active');
+    expect(items[2]).not.toHaveAttribute('aria-current');
+    expect(within(items[0]).queryByRole('button', { name: 'Start voting' })).not.toBeInTheDocument();
+
+    await userEvent.setup().click(within(items[2]).getByRole('button', { name: 'Start voting' }));
+    expect(onSelect).toHaveBeenCalledWith('t3');
+  });
+
+  it('edits a ticket inline, including the active one, and can cancel', async () => {
+    const { onEdit } = renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: 't1' });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    const editor = screen.getByLabelText('Edit ticket text');
+    await user.clear(editor);
+    await user.type(editor, ' One with SSO ');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onEdit).toHaveBeenCalledWith('t1', 'One with SSO');
+    expect(screen.queryByLabelText('Edit ticket text')).not.toBeInTheDocument();
+  });
+
+  it('removes a ticket only after the host confirms', async () => {
+    const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
+    vi.stubGlobal('confirm', confirm);
+    const { onRemove } = renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: 't1' });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(onRemove).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(onRemove).toHaveBeenCalledWith('t1');
+  });
+
+  it('shows a non-host the list as read-only text with no management controls', () => {
+    renderPanel({ isHost: false, tickets: [ticket('t1', '<b>Login</b>')], activeTicketId: null });
     expect(screen.getByText('<b>Login</b>')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for the host to choose a ticket.')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('tells other participants when there is no ticket yet', () => {
-    render(<TicketPanel ticket={null} isHost={false} onSetTicket={vi.fn()} />);
+  it('tells a host when no ticket is active', () => {
+    renderPanel({ tickets: [ticket('t1', 'One')], activeTicketId: null });
+    expect(screen.getByText('No ticket is active. Choose one to start voting.')).toBeInTheDocument();
+  });
+
+  it('tells other participants when there are no tickets yet', () => {
+    renderPanel({ isHost: false });
     expect(screen.getByText('Waiting for the host to add a ticket.')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
+  it('marks revealed tickets and toggles their stored results', async () => {
+    renderPanel({
+      isHost: false,
+      tickets: [ticket('t1', 'One', { users: [{ id: 'u1', name: 'Sam' }, { id: 'u2', name: 'Kim' }], votes: { u1: '5' } })],
+    });
+    expect(screen.getByRole('listitem')).toHaveTextContent('Revealed');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Show results' }));
+    expect(screen.getByRole('button', { name: 'Hide results' })).toHaveAttribute('aria-expanded', 'true');
+    const participants = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
+    expect(participants.map((row) => row.textContent)).toEqual(['Sam5', 'KimNo vote']);
   });
 });

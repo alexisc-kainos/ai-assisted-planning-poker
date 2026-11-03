@@ -85,28 +85,68 @@ describe('parseClientMessage', () => {
     expect(parseClientMessage(JSON.stringify({ type }))).toEqual({ ok: true, message: { type } });
   });
 
-  const setTicket = (ticket: unknown) => JSON.stringify({ type: 'setTicket', ticket });
+  const addTicket = (ticket: unknown) => JSON.stringify({ type: 'addTicket', ticket });
 
   it.each([
-    ['missing ticket', '{"type":"setTicket"}'],
-    ['null ticket', setTicket(null)],
-    ['array ticket', setTicket([])],
-    ['spike type', setTicket({ type: 'spike', content: 'Login' })],
-    ['missing type', setTicket({ content: 'Login' })],
-    ['numeric content', setTicket({ type: 'story', content: 5 })],
-    ['blank content', setTicket({ type: 'story', content: ' \n ' })],
-    ['501 chars', setTicket({ type: 'story', content: 'x'.repeat(501) })],
-  ])('rejects setTicket with %s', (_label, raw) => {
-    expect(parseClientMessage(raw)).toEqual({ ok: false, error: 'Invalid setTicket message' });
+    ['missing ticket', '{"type":"addTicket"}'],
+    ['null ticket', addTicket(null)],
+    ['array ticket', addTicket([])],
+    ['spike type', addTicket({ type: 'spike', content: 'Login' })],
+    ['missing type', addTicket({ content: 'Login' })],
+    ['numeric content', addTicket({ type: 'story', content: 5 })],
+    ['blank content', addTicket({ type: 'story', content: ' \n ' })],
+    ['501 chars', addTicket({ type: 'story', content: 'x'.repeat(501) })],
+  ])('rejects addTicket with %s', (_label, raw) => {
+    expect(parseClientMessage(raw)).toEqual({ ok: false, error: 'Invalid addTicket message' });
   });
 
-  it('accepts setTicket, trimming content and counting emoji as one char', () => {
-    expect(parseClientMessage(setTicket({ type: 'story', content: '  Login\npage  ' }))).toEqual({
+  it('accepts addTicket, trimming content and counting emoji as one char', () => {
+    expect(parseClientMessage(addTicket({ type: 'story', content: '  Login\npage  ' }))).toEqual({
       ok: true,
-      message: { type: 'setTicket', ticket: { type: 'story', content: 'Login\npage' } },
+      message: { type: 'addTicket', ticket: { type: 'story', content: 'Login\npage' } },
     });
     const emoji = '🐧'.repeat(500);
-    expect(parseClientMessage(setTicket({ type: 'story', content: emoji }))).toMatchObject({ ok: true });
+    expect(parseClientMessage(addTicket({ type: 'story', content: emoji }))).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ['missing ticketId', { content: 'Login' }],
+    ['numeric ticketId', { ticketId: 1, content: 'Login' }],
+    ['empty ticketId', { ticketId: '', content: 'Login' }],
+    ['ticketId over 64 chars', { ticketId: 't'.repeat(65), content: 'Login' }],
+    ['missing content', { ticketId: 'ticket-1' }],
+    ['blank content', { ticketId: 'ticket-1', content: '   ' }],
+    ['501 chars', { ticketId: 'ticket-1', content: 'x'.repeat(501) }],
+  ])('rejects editTicket with %s', (_label, fields) => {
+    expect(parseClientMessage(JSON.stringify({ type: 'editTicket', ...fields }))).toEqual({
+      ok: false,
+      error: 'Invalid editTicket message',
+    });
+  });
+
+  it('accepts editTicket, trimming content', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'editTicket', ticketId: 'ticket-1', content: ' SSO ' }))).toEqual({
+      ok: true,
+      message: { type: 'editTicket', ticketId: 'ticket-1', content: 'SSO' },
+    });
+  });
+
+  it.each(['removeTicket', 'selectTicket'])('validates the ticketId of %s', (type) => {
+    expect(parseClientMessage(JSON.stringify({ type, ticketId: 'ticket-1' }))).toEqual({
+      ok: true,
+      message: { type, ticketId: 'ticket-1' },
+    });
+    for (const ticketId of [undefined, 7, '', 't'.repeat(65)]) {
+      expect(parseClientMessage(JSON.stringify({ type, ticketId }))).toEqual({
+        ok: false,
+        error: `Invalid ${type} message`,
+      });
+    }
+  });
+
+  it('no longer accepts setTicket', () => {
+    const raw = JSON.stringify({ type: 'setTicket', ticket: { type: 'story', content: 'Login' } });
+    expect(parseClientMessage(raw)).toEqual({ ok: false, error: 'Unknown message type' });
   });
 });
 
