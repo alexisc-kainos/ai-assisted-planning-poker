@@ -63,7 +63,7 @@ export function VoteResults({ users, votes, ticketType = 'story', title = 'Vote 
           ) : (
             <ol className="vote-results-bars" aria-label="Vote frequency">
               {frequencies.map(({ value, count }) => (
-                <li key={value} className="vote-result-row">
+                <li key={value} className={count === maximumCount ? 'vote-result-row most-common' : 'vote-result-row'}>
                   <span className="vote-result-value">{voteLabel(value, ticketType)}</span>
                   <div
                     className="vote-result-track"
@@ -76,6 +76,7 @@ export function VoteResults({ users, votes, ticketType = 'story', title = 'Vote 
                     <span className="vote-result-bar" style={{ width: `${(count / maximumCount) * 100}%` }} />
                   </div>
                   <strong aria-hidden="true">{count}</strong>
+                  {count === maximumCount && <span className="most-common-label">Most common</span>}
                 </li>
               ))}
             </ol>

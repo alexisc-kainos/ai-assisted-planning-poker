@@ -3,21 +3,17 @@ import type { ReactNode } from 'react';
 export interface AvatarOption {
   id: string;
   label: string;
-  background: string;
   art: ReactNode;
 }
 
-const eyes = (y = 30, dx = 8, cx = 32) => (
-  <>
-    <circle cx={cx - dx} cy={y} r={2.6} fill="#3b3346" />
-    <circle cx={cx + dx} cy={y} r={2.6} fill="#3b3346" />
-  </>
-);
+const INK = '#23302f';
+const shape = { stroke: '#3a4a48', strokeWidth: 1.1, strokeLinejoin: 'round' as const };
+const line = { fill: 'none', stroke: INK, strokeLinecap: 'round' as const };
 
-const cheeks = (y = 37, dx = 13) => (
+const eyes = (cx1: number, cx2: number, cy: number, r = 2.4) => (
   <>
-    <circle cx={32 - dx} cy={y} r={3} fill="#f7a8b8" opacity={0.6} />
-    <circle cx={32 + dx} cy={y} r={3} fill="#f7a8b8" opacity={0.6} />
+    <circle cx={cx1} cy={cy} r={r} fill={INK} />
+    <circle cx={cx2} cy={cy} r={r} fill={INK} />
   </>
 );
 
@@ -25,124 +21,115 @@ export const AVATARS: AvatarOption[] = [
   {
     id: 'capybara',
     label: 'Capybara',
-    background: '#ffe5c4',
     art: (
       <>
-        <circle cx={19} cy={17} r={5} fill="#a8774f" />
-        <circle cx={45} cy={17} r={5} fill="#a8774f" />
-        <rect x={13} y={16} width={38} height={36} rx={16} fill="#c4915f" />
-        <rect x={20} y={34} width={24} height={15} rx={7} fill="#a8774f" />
-        <circle cx={27} cy={39} r={1.6} fill="#3b3346" />
-        <circle cx={37} cy={39} r={1.6} fill="#3b3346" />
-        {eyes(28, 9)}
+        <circle cx={19} cy={17} r={5} fill="#a8774f" {...shape} />
+        <circle cx={45} cy={17} r={5} fill="#a8774f" {...shape} />
+        <rect x={12} y={16} width={40} height={40} rx={17} fill="#c4915f" {...shape} />
+        <rect x={20} y={36} width={24} height={15} rx={7} fill="#a8774f" {...shape} />
+        <circle cx={27} cy={41} r={1.6} fill={INK} />
+        <circle cx={37} cy={41} r={1.6} fill={INK} />
+        {eyes(23, 41, 29, 2.5)}
       </>
     ),
   },
   {
     id: 'stork',
     label: 'Stork',
-    background: '#d6ecff',
     art: (
       <>
-        <circle cx={30} cy={32} r={16} fill="#ffffff" stroke="#e1e6ef" strokeWidth={1.5} />
-        <path d="M40 33 L58 38 L40 39 Z" fill="#f59e6b" />
-        <circle cx={34} cy={28} r={2.6} fill="#3b3346" />
-        <path d="M18 20 Q24 14 30 16" stroke="#3b3346" strokeWidth={2} fill="none" strokeLinecap="round" />
-        <circle cx={24} cy={37} r={3} fill="#f7a8b8" opacity={0.6} />
+        <path d="M12 60 Q30 40 50 60Z" fill="#2b2b33" {...shape} />
+        <circle cx={30} cy={30} r={16} fill="#ffffff" {...shape} />
+        <path d="M43 27 L62 38 L43 34Z" fill="#e8643c" {...shape} />
+        <circle cx={35} cy={26} r={2.5} fill={INK} />
+        <path d="M18 18 Q22 12 28 14" strokeWidth={1.6} {...line} />
       </>
     ),
   },
   {
     id: 'penguin',
     label: 'Penguin',
-    background: '#d4f1f4',
     art: (
       <>
-        <ellipse cx={32} cy={34} rx={19} ry={20} fill="#3d4a5c" />
-        <ellipse cx={32} cy={38} rx={13} ry={14} fill="#ffffff" />
-        {eyes(32, 6)}
-        <path d="M28 37 L36 37 L32 42 Z" fill="#f7b267" />
-        {cheeks(39, 10)}
+        <ellipse cx={32} cy={34} rx={21} ry={23} fill="#2f3446" {...shape} />
+        <path d="M18 38 Q18 22 32 27 Q46 22 46 38 Q46 52 32 53 Q18 52 18 38Z" fill="#ffffff" {...shape} />
+        {eyes(26, 38, 35)}
+        <path d="M28 41 L36 41 L32 46Z" fill="#f2a33a" {...shape} />
       </>
     ),
   },
   {
     id: 'cat',
     label: 'Cat',
-    background: '#fde2e4',
     art: (
       <>
-        <path d="M15 26 L18 10 L28 20 Z" fill="#b9b4c7" />
-        <path d="M49 26 L46 10 L36 20 Z" fill="#b9b4c7" />
-        <circle cx={32} cy={34} r={18} fill="#cfcadc" />
-        {eyes(31, 7)}
-        <path d="M30 37 L34 37 L32 39.5 Z" fill="#f28ba8" />
-        <path d="M14 36 L24 37 M14 41 L24 39 M50 36 L40 37 M50 41 L40 39" stroke="#8e879e" strokeWidth={1.2} />
+        <path d="M13 28 L17 8 L30 20Z" fill="#9aa0ad" {...shape} />
+        <path d="M51 28 L47 8 L34 20Z" fill="#9aa0ad" {...shape} />
+        <circle cx={32} cy={36} r={19} fill="#9aa0ad" {...shape} />
+        <path d="M18 22 L19 14 L25 20Z" fill="#f2b8c6" />
+        <path d="M46 22 L45 14 L39 20Z" fill="#f2b8c6" />
+        {eyes(25, 39, 34)}
+        <path d="M29.5 40 L34.5 40 L32 43Z" fill="#e88a9a" />
+        <path d="M10 41 L22 42 M10 46 L22 45 M54 41 L42 42 M54 46 L42 45" strokeWidth={1.2} {...line} />
       </>
     ),
   },
   {
     id: 'dog',
     label: 'Dog',
-    background: '#fff1c1',
     art: (
       <>
-        <ellipse cx={15} cy={30} rx={6} ry={12} fill="#a4785a" />
-        <ellipse cx={49} cy={30} rx={6} ry={12} fill="#a4785a" />
-        <circle cx={32} cy={33} r={17} fill="#d9b48f" />
-        <ellipse cx={32} cy={40} rx={8} ry={6} fill="#f3e2cf" />
-        {eyes(29, 7)}
-        <ellipse cx={32} cy={37} rx={3.2} ry={2.4} fill="#3b3346" />
-        <path d="M30 43 Q32 48 34 43 Z" fill="#f28ba8" />
+        <ellipse cx={13} cy={30} rx={7} ry={14} transform="rotate(15 13 30)" fill="#8a6142" {...shape} />
+        <ellipse cx={51} cy={30} rx={7} ry={14} transform="rotate(-15 51 30)" fill="#8a6142" {...shape} />
+        <circle cx={32} cy={34} r={19} fill="#d9b88f" {...shape} />
+        <ellipse cx={32} cy={43} rx={10} ry={8} fill="#f3e3cc" {...shape} />
+        {eyes(25, 39, 31)}
+        <ellipse cx={32} cy={39.5} rx={3.6} ry={2.6} fill={INK} />
       </>
     ),
   },
   {
     id: 'fox',
     label: 'Fox',
-    background: '#ffd8be',
     art: (
       <>
-        <path d="M14 28 L16 9 L29 20 Z" fill="#f08a4b" />
-        <path d="M50 28 L48 9 L35 20 Z" fill="#f08a4b" />
-        <path d="M12 26 Q32 12 52 26 L32 52 Z" fill="#f4a261" />
-        <path d="M18 32 L32 52 L46 32 Q32 38 18 32 Z" fill="#ffffff" />
-        {eyes(29, 8)}
-        <circle cx={32} cy={46} r={2.4} fill="#3b3346" />
+        <path d="M11 26 L14 6 L27 18Z" fill="#e07a3a" {...shape} />
+        <path d="M53 26 L50 6 L37 18Z" fill="#e07a3a" {...shape} />
+        <path d="M8 24 Q32 10 56 24 L32 56Z" fill="#e07a3a" {...shape} />
+        <path d="M10 26 L32 56 L24 34Z" fill="#fff4ea" {...shape} />
+        <path d="M54 26 L32 56 L40 34Z" fill="#fff4ea" {...shape} />
+        {eyes(24, 40, 29)}
+        <circle cx={32} cy={51} r={2.6} fill={INK} />
       </>
     ),
   },
   {
     id: 'frog',
     label: 'Frog',
-    background: '#dcf5d6',
     art: (
       <>
-        <circle cx={21} cy={22} r={8} fill="#8fd18a" />
-        <circle cx={43} cy={22} r={8} fill="#8fd18a" />
-        <ellipse cx={32} cy={37} rx={21} ry={15} fill="#8fd18a" />
-        <circle cx={21} cy={22} r={4} fill="#ffffff" />
-        <circle cx={43} cy={22} r={4} fill="#ffffff" />
-        {eyes(22, 11)}
-        <path d="M22 40 Q32 47 42 40" stroke="#3b3346" strokeWidth={2} fill="none" strokeLinecap="round" />
-        {cheeks(38, 15)}
+        <circle cx={20} cy={22} r={9} fill="#6fb35a" {...shape} />
+        <circle cx={44} cy={22} r={9} fill="#6fb35a" {...shape} />
+        <ellipse cx={32} cy={40} rx={25} ry={17} fill="#6fb35a" {...shape} />
+        <circle cx={20} cy={22} r={5} fill="#ffffff" {...shape} />
+        <circle cx={44} cy={22} r={5} fill="#ffffff" {...shape} />
+        {eyes(20, 44, 22)}
+        <path d="M22 44 Q32 51 42 44" strokeWidth={2} {...line} />
       </>
     ),
   },
   {
     id: 'bunny',
     label: 'Bunny',
-    background: '#ece4ff',
     art: (
       <>
-        <ellipse cx={24} cy={14} rx={5} ry={13} fill="#ffffff" stroke="#e5ddf5" />
-        <ellipse cx={40} cy={14} rx={5} ry={13} fill="#ffffff" stroke="#e5ddf5" />
-        <ellipse cx={24} cy={14} rx={2.4} ry={9} fill="#f7c6d4" />
-        <ellipse cx={40} cy={14} rx={2.4} ry={9} fill="#f7c6d4" />
-        <circle cx={32} cy={37} r={16} fill="#ffffff" stroke="#e5ddf5" />
-        {eyes(34, 6)}
-        <path d="M30 39 L34 39 L32 41.5 Z" fill="#f28ba8" />
-        {cheeks(41, 10)}
+        <ellipse cx={23} cy={16} rx={6} ry={15} fill="#ece7df" {...shape} />
+        <ellipse cx={41} cy={16} rx={6} ry={15} fill="#ece7df" {...shape} />
+        <ellipse cx={23} cy={17} rx={2.6} ry={10} fill="#f2b8c6" />
+        <ellipse cx={41} cy={17} rx={2.6} ry={10} fill="#f2b8c6" />
+        <circle cx={32} cy={40} r={18} fill="#ece7df" {...shape} />
+        {eyes(25, 39, 38)}
+        <path d="M29.5 44 L34.5 44 L32 47Z" fill="#e88a9a" />
       </>
     ),
   },
@@ -150,15 +137,21 @@ export const AVATARS: AvatarOption[] = [
 
 const AVATARS_BY_ID = new Map(AVATARS.map((avatar) => [avatar.id, avatar]));
 
+export function AvatarArt({ id }: { id: string }) {
+  return <>{AVATARS_BY_ID.get(id)?.art}</>;
+}
+
 export function Avatar({ id, size = 48 }: { id?: string; size?: number }) {
   const avatar = id ? AVATARS_BY_ID.get(id) : undefined;
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-      <circle cx={32} cy={32} r={32} fill={avatar?.background ?? '#eeeeee'} />
+    <svg className="avatar" width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
       {avatar?.art ?? (
-        <text x={32} y={41} textAnchor="middle" fontSize={26} fill="#8e879e">
-          ?
-        </text>
+        <>
+          <circle cx={32} cy={32} r={30} fill="#ece7dd" stroke="#6f7b79" strokeDasharray="4 3" />
+          <text x={32} y={41} textAnchor="middle" fontSize={26} fill="#4f5d5b">
+            ?
+          </text>
+        </>
       )}
     </svg>
   );
