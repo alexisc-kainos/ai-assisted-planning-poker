@@ -141,8 +141,8 @@ describe('RoomPage', () => {
       hostId,
       revealed: false,
       tickets: [
-        { id: 'ticket-1', type: 'story', content: 'Login page', result: null },
-        { id: 'ticket-2', type: 'story', content: 'Logout', result: null },
+        { id: 'ticket-1', type: 'story', title: 'Login page', description: 'As a user I log in', result: null },
+        { id: 'ticket-2', type: 'story', title: 'Logout', description: '', result: null },
       ],
       activeTicketId: 'ticket-1',
       round: 0,
@@ -221,9 +221,10 @@ describe('RoomPage', () => {
       const confirm = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true);
       vi.stubGlobal('confirm', confirm);
 
-      await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
+      await user.type(screen.getByLabelText('Ticket title'), 'Signup');
+      await user.type(screen.getByLabelText('Ticket description (optional)'), 'With email');
       await user.click(screen.getByRole('button', { name: 'Add ticket' }));
-      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+      expect(screen.getByLabelText('Ticket title')).toHaveValue('Signup');
 
       const tickets = within(screen.getByRole('list', { name: 'Tickets' })).getAllByRole('listitem');
       expect(tickets[0]).toHaveAttribute('aria-current', 'true');
@@ -231,8 +232,9 @@ describe('RoomPage', () => {
       await user.click(within(tickets[1]).getByRole('button', { name: 'Start voting' }));
 
       await user.click(within(tickets[0]).getByRole('button', { name: 'Edit' }));
-      const editor = within(tickets[0]).getByLabelText('Edit ticket text');
+      const editor = within(tickets[0]).getByLabelText('Edit title');
       expect(editor).toHaveValue('Login page');
+      expect(within(tickets[0]).getByLabelText('Edit description (optional)')).toHaveValue('As a user I log in');
       await user.clear(editor);
       await user.type(editor, 'Login with SSO');
       await user.click(within(tickets[0]).getByRole('button', { name: 'Save' }));
@@ -243,9 +245,15 @@ describe('RoomPage', () => {
       expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Login page'));
 
       expect(ws.sent).toEqual([
-        { type: 'addTicket', ticket: { type: 'story', content: 'Signup' } },
+        { type: 'addTicket', ticket: { type: 'story', title: 'Signup', description: 'With email' } },
         { type: 'selectTicket', ticketId: 'ticket-2' },
-        { type: 'editTicket', ticketId: 'ticket-1', content: 'Login with SSO', ticketType: 'story' },
+        {
+          type: 'editTicket',
+          ticketId: 'ticket-1',
+          title: 'Login with SSO',
+          description: 'As a user I log in',
+          ticketType: 'story',
+        },
         { type: 'removeTicket', ticketId: 'ticket-1' },
       ]);
     });
@@ -254,10 +262,15 @@ describe('RoomPage', () => {
       const ws = await joinAs('user-b');
       const list = within(screen.getByRole('list', { name: 'Tickets' }));
       expect(list.getAllByRole('listitem').map((item) => item.querySelector('.ticket-content')?.textContent)).toEqual([
+        'Login pageAs a user I log in',
+        'Logout',
+      ]);
+      expect(list.getAllByRole('listitem').map((item) => item.querySelector('strong')?.textContent)).toEqual([
         'Login page',
         'Logout',
       ]);
       expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
+      expect(screen.getByRole('region', { name: 'Current ticket' })).toHaveTextContent('As a user I log in');
       for (const name of ['Start voting', 'Edit', 'Remove', 'Add ticket']) {
         expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
       }
@@ -289,16 +302,16 @@ describe('RoomPage', () => {
     it('keeps the add draft when the server rejects it and clears it once the ticket is added', async () => {
       const ws = await joinAs('user-b', 'user-b');
       const user = userEvent.setup();
-      await user.type(screen.getByLabelText('What are we estimating?'), 'Signup');
+      await user.type(screen.getByLabelText('Ticket title'), 'Signup');
       await user.click(screen.getByRole('button', { name: 'Add ticket' }));
       ws.emit({ type: 'error', message: 'A room can have at most 10 tickets' });
       expect(screen.getByRole('alert')).toHaveTextContent('A room can have at most 10 tickets');
-      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('Signup');
+      expect(screen.getByLabelText('Ticket title')).toHaveValue('Signup');
 
       await user.click(screen.getByRole('button', { name: 'Add ticket' }));
       const base = roomState(null, 'user-b');
-      ws.emit({ ...base, tickets: [...base.tickets, { id: 'ticket-3', type: 'story', content: 'Signup', result: null }] });
-      expect(screen.getByLabelText('What are we estimating?')).toHaveValue('');
+      ws.emit({ ...base, tickets: [...base.tickets, { id: 'ticket-3', type: 'story', title: 'Signup', description: '', result: null }] });
+      expect(screen.getByLabelText('Ticket title')).toHaveValue('');
     });
 
     it('switches to the day deck while a spike ticket is active and shows results in days', async () => {
@@ -330,7 +343,15 @@ describe('RoomPage', () => {
       await user.click(within(first).getByRole('button', { name: 'Edit' }));
       await user.click(within(first).getByRole('radio', { name: 'Spike' }));
       await user.click(within(first).getByRole('button', { name: 'Save' }));
-      expect(ws.sent).toEqual([{ type: 'editTicket', ticketId: 'ticket-1', content: 'Login page', ticketType: 'spike' }]);
+      expect(ws.sent).toEqual([
+        {
+          type: 'editTicket',
+          ticketId: 'ticket-1',
+          title: 'Login page',
+          description: 'As a user I log in',
+          ticketType: 'spike',
+        },
+      ]);
     });
 
     it('shows voting controls only to the current host and sends reveal/reset messages', async () => {

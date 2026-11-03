@@ -380,7 +380,7 @@ describe('voting, reveal and reset', () => {
 
   it('does not require anyone to vote', async () => {
     const { host, guest } = await twoUsers();
-    host.send({ type: 'addTicket', ticket: { type: 'story', content: 'Login page' } });
+    host.send({ type: 'addTicket', ticket: { type: 'story', title: 'Login page', description: '' } });
     expect((await guest.next('state')).users.every((u: Message) => !u.hasVoted)).toBe(true);
     await host.next('state');
     host.send({ type: 'reveal' });
@@ -411,7 +411,10 @@ describe('ticket list', () => {
     return { host, guest, hostId, guestId };
   }
 
-  const addTicket = (content: unknown, type: unknown = 'story') => ({ type: 'addTicket', ticket: { type, content } });
+  const addTicket = (title: unknown, type: unknown = 'story', description: unknown = '') => ({
+    type: 'addTicket',
+    ticket: { type, title, description },
+  });
 
   async function act(sender: TestClient, others: TestClient[], message: unknown): Promise<Message> {
     sender.send(message);
@@ -421,26 +424,33 @@ describe('ticket list', () => {
     return state;
   }
 
-  async function addTickets(host: TestClient, guest: TestClient, ...contents: string[]): Promise<string[]> {
+  async function addTickets(host: TestClient, guest: TestClient, ...titles: string[]): Promise<string[]> {
     let state: Message = {};
-    for (const content of contents) state = await act(host, [guest], addTicket(content));
+    for (const title of titles) state = await act(host, [guest], addTicket(title));
     return state.tickets.map((t: Message) => t.id);
   }
 
   it('lets the host add trimmed tickets in order without activating them, visible to everyone', async () => {
     const { host, guest } = await twoUsers();
-    host.send(addTicket('  As a user\nI want to log in  '));
+    host.send(addTicket('  Login  ', 'story', '  As a user\nI want to log in  '));
     const guestView = await guest.next('state');
     await host.next('state');
     expect(guestView.tickets).toEqual([
-      { id: expect.stringMatching(/^ticket-/), type: 'story', content: 'As a user\nI want to log in', result: null },
+      {
+        id: expect.stringMatching(/^ticket-/),
+        type: 'story',
+        title: 'Login',
+        description: 'As a user\nI want to log in',
+        result: null,
+      },
     ]);
     expect(guestView.activeTicketId).toBeNull();
 
     await addTickets(host, guest, 'Logout', 'Logout');
     const late = await connect(port, { room: ROOM, name: 'Late' });
     const lateView = await late.next('state');
-    expect(lateView.tickets.map((t: Message) => t.content)).toEqual(['As a user\nI want to log in', 'Logout', 'Logout']);
+    expect(lateView.tickets.map((t: Message) => t.title)).toEqual(['Login', 'Logout', 'Logout']);
+    expect(lateView.tickets.map((t: Message) => t.description)).toEqual(['As a user\nI want to log in', '', '']);
     expect(new Set(lateView.tickets.map((t: Message) => t.id)).size).toBe(3);
   });
 
@@ -452,7 +462,7 @@ describe('ticket list', () => {
   ])('rejects a non-host trying to %s a ticket without broadcasting', async (_label, type, error) => {
     const { host, guest } = await twoUsers();
     const [ticketId] = await addTickets(host, guest, 'Login');
-    guest.send({ type, ticketId, content: 'Sneaky', ticket: { type: 'story', content: 'Sneaky' } });
+    guest.send({ type, ticketId, title: 'Sneaky', description: '', ticket: { type: 'story', title: 'Sneaky', description: '' } });
     expect(await guest.next('error')).toEqual({ type: 'error', message: error });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(host.messages).toEqual([]);
@@ -461,18 +471,24 @@ describe('ticket list', () => {
   it.each([
     ['no ticket', { type: 'addTicket' }],
     ['unknown type', addTicket('Login', 'epic')],
-    ['blank content', addTicket('   ')],
-    ['content over 500 chars', addTicket('x'.repeat(501))],
+    ['blank title', addTicket('   ')],
+    ['title with a line break', addTicket('Login\npage')],
+    ['title over 100 chars', addTicket('x'.repeat(101))],
+    ['description over 500 chars', addTicket('Login', 'story', 'x'.repeat(501))],
+    ['missing description', { type: 'addTicket', ticket: { type: 'story', title: 'Login' } }],
+    ['legacy content', { type: 'addTicket', ticket: { type: 'story', content: 'Login' } }],
   ])('rejects %s with Invalid addTicket message', async (_label, message) => {
     const { host } = await twoUsers();
     host.send(message);
     expect((await host.next('error')).message).toBe('Invalid addTicket message');
   });
 
-  it('accepts content of exactly 500 chars', async () => {
+  it('accepts a 100-char title and a 500-char description', async () => {
     const { host } = await twoUsers();
-    host.send(addTicket('x'.repeat(500)));
-    expect((await host.next('state')).tickets[0].content).toHaveLength(500);
+    host.send(addTicket('t'.repeat(100), 'story', 'd'.repeat(500)));
+    const [ticket] = (await host.next('state')).tickets;
+    expect(ticket.title).toHaveLength(100);
+    expect(ticket.description).toHaveLength(500);
   });
 
   it('allows 10 tickets, blocks the 11th, and frees a slot on removal', async () => {
@@ -488,7 +504,7 @@ describe('ticket list', () => {
     await act(host, [guest], { type: 'removeTicket', ticketId: ids[0] });
     const state = await act(host, [guest], addTicket('Ticket 11'));
     expect(state.tickets).toHaveLength(10);
-    expect(state.tickets.at(-1).content).toBe('Ticket 11');
+    expect(state.tickets.at(-1).title).toBe('Ticket 11');
   });
 
   it('switches to any ticket with a fresh round, rejecting the already-active or unknown ones', async () => {
@@ -583,15 +599,24 @@ describe('ticket list', () => {
     await act(host, [guest], { type: 'reset' });
     await act(guest, [host], vote('13', round));
 
-    const edited = await act(host, [guest], { type: 'editTicket', ticketId: first, content: '  One with SSO ' });
-    expect(edited.tickets[0]).toMatchObject({ content: 'One with SSO', result: { votes: { [guestId]: '5' } } });
+    const edited = await act(host, [guest], {
+      type: 'editTicket',
+      ticketId: first,
+      title: '  One with SSO ',
+      description: ' Okta only\n ',
+    });
+    expect(edited.tickets[0]).toMatchObject({
+      title: 'One with SSO',
+      description: 'Okta only',
+      result: { votes: { [guestId]: '5' } },
+    });
     expect(edited.activeTicketId).toBe(first);
     expect(edited.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
 
-    const other = await act(host, [guest], { type: 'editTicket', ticketId: second, content: 'Two edited' });
-    expect(other.tickets.map((t: Message) => t.content)).toEqual(['One with SSO', 'Two edited']);
+    const other = await act(host, [guest], { type: 'editTicket', ticketId: second, title: 'Two edited', description: '' });
+    expect(other.tickets.map((t: Message) => t.title)).toEqual(['One with SSO', 'Two edited']);
 
-    host.send({ type: 'editTicket', ticketId: 'ticket-missing', content: 'X' });
+    host.send({ type: 'editTicket', ticketId: 'ticket-missing', title: 'X', description: '' });
     expect((await host.next('error')).message).toBe('Ticket not found');
   });
 
@@ -599,7 +624,7 @@ describe('ticket list', () => {
     const { host, guest, guestId } = await twoUsers();
     const added = await act(host, [guest], addTicket('Investigate SSO', 'spike'));
     const [spike] = added.tickets;
-    expect(spike).toMatchObject({ type: 'spike', content: 'Investigate SSO', result: null });
+    expect(spike).toMatchObject({ type: 'spike', title: 'Investigate SSO', description: '', result: null });
 
     await act(host, [guest], { type: 'selectTicket', ticketId: spike.id });
     await act(guest, [host], vote('3', round));
@@ -621,7 +646,7 @@ describe('ticket list', () => {
     await act(host, [guest], { type: 'reveal' });
     const before = round;
 
-    const changed = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One', ticketType: 'spike' });
+    const changed = await act(host, [guest], { type: 'editTicket', ticketId: first, title: 'One', description: '', ticketType: 'spike' });
     expect(changed.tickets[0]).toMatchObject({ type: 'spike', result: null });
     expect(changed).toMatchObject({ activeTicketId: first, revealed: false, votes: null, myVote: null, round: before + 1 });
     expect(changed.users.find((u: Message) => u.id === guestId).hasVoted).toBe(false);
@@ -630,7 +655,7 @@ describe('ticket list', () => {
     expect((await guest.next('error')).message).toBe('Vote was for a previous round');
 
     await act(guest, [host], vote('2', round));
-    const back = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One', ticketType: 'story' });
+    const back = await act(host, [guest], { type: 'editTicket', ticketId: first, title: 'One', description: '', ticketType: 'story' });
     expect(back.tickets[0].type).toBe('story');
     expect(back.users.every((u: Message) => !u.hasVoted)).toBe(true);
   });
@@ -645,7 +670,7 @@ describe('ticket list', () => {
     await act(guest, [host], vote('3', round));
     const before = round;
 
-    const changed = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One', ticketType: 'spike' });
+    const changed = await act(host, [guest], { type: 'editTicket', ticketId: first, title: 'One', description: '', ticketType: 'spike' });
     expect(changed.tickets[0]).toMatchObject({ type: 'spike', result: null });
     expect(changed).toMatchObject({ activeTicketId: second, round: before });
     expect(changed.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
@@ -661,8 +686,8 @@ describe('ticket list', () => {
     await act(guest, [host], vote('8', round));
     const before = round;
 
-    const edited = await act(host, [guest], { type: 'editTicket', ticketId: first, content: 'One!', ticketType: 'story' });
-    expect(edited.tickets[0]).toMatchObject({ content: 'One!', type: 'story', result: { votes: { [guestId]: '5' } } });
+    const edited = await act(host, [guest], { type: 'editTicket', ticketId: first, title: 'One!', description: '', ticketType: 'story' });
+    expect(edited.tickets[0]).toMatchObject({ title: 'One!', type: 'story', result: { votes: { [guestId]: '5' } } });
     expect(edited.round).toBe(before);
     expect(edited.users.find((u: Message) => u.id === guestId).hasVoted).toBe(true);
   });
@@ -670,9 +695,9 @@ describe('ticket list', () => {
   it('rejects an invalid ticketType and a non-host type change without broadcasting', async () => {
     const { host, guest } = await twoUsers();
     const [first] = await addTickets(host, guest, 'One');
-    host.send({ type: 'editTicket', ticketId: first, content: 'One', ticketType: 'epic' });
+    host.send({ type: 'editTicket', ticketId: first, title: 'One', description: '', ticketType: 'epic' });
     expect((await host.next('error')).message).toBe('Invalid editTicket message');
-    guest.send({ type: 'editTicket', ticketId: first, content: 'One', ticketType: 'spike' });
+    guest.send({ type: 'editTicket', ticketId: first, title: 'One', description: '', ticketType: 'spike' });
     expect((await guest.next('error')).message).toBe('Only the host can edit tickets');
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(host.messages).toEqual([]);
@@ -711,10 +736,10 @@ describe('ticket list', () => {
     await act(host, [guest], { type: 'selectTicket', ticketId: first });
     await host.close();
     const promoted = await guest.next('state');
-    expect(promoted).toMatchObject({ hostId: guestId, activeTicketId: first, tickets: [{ content: 'Login' }] });
+    expect(promoted).toMatchObject({ hostId: guestId, activeTicketId: first, tickets: [{ title: 'Login' }] });
 
-    const state = await act(guest, [], { type: 'editTicket', ticketId: first, content: 'Logout' });
-    expect(state.tickets[0].content).toBe('Logout');
+    const state = await act(guest, [], { type: 'editTicket', ticketId: first, title: 'Logout', description: '' });
+    expect(state.tickets[0].title).toBe('Logout');
   });
 });
 
@@ -781,7 +806,7 @@ describe('participate and spectate', () => {
 
   it('keeps revealed votes and the stored result when switching after reveal', async () => {
     const { host, guest, hostId, guestId } = await twoUsers();
-    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', content: 'One' } });
+    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', title: 'One', description: '' } });
     await act(host, [guest], { type: 'selectTicket', ticketId: added.tickets[0].id });
     await act(guest, [host], vote('8', round));
     await act(host, [guest], { type: 'reveal' });
@@ -802,7 +827,7 @@ describe('participate and spectate', () => {
 
   it('leaves spectators without a vote out of the stored result', async () => {
     const { host, guest, guestId } = await twoUsers();
-    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', content: 'One' } });
+    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', title: 'One', description: '' } });
     await act(host, [guest], { type: 'selectTicket', ticketId: added.tickets[0].id });
     await act(host, [guest], spectate(true));
     await act(guest, [host], vote('3', round));
@@ -816,7 +841,7 @@ describe('participate and spectate', () => {
     const spectating = await act(host, [guest], spectate(true));
     expect(spectating.hostId).toBe(hostId);
 
-    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', content: 'One' } });
+    const added = await act(host, [guest], { type: 'addTicket', ticket: { type: 'story', title: 'One', description: '' } });
     await act(host, [guest], { type: 'selectTicket', ticketId: added.tickets[0].id });
     await act(guest, [host], vote('5', round));
     expect((await act(host, [guest], { type: 'reveal' })).revealed).toBe(true);

@@ -4,7 +4,8 @@ export const MAX_NAME_LENGTH = 32;
 export const MAX_DECK_LENGTH = 32;
 export const MAX_AVATAR_LENGTH = 32;
 export const MAX_VOTE_LENGTH = 64;
-export const MAX_TICKET_LENGTH = 500;
+export const MAX_TICKET_TITLE_LENGTH = 100;
+export const MAX_TICKET_DESCRIPTION_LENGTH = 500;
 export const MAX_TICKETS = 10;
 const MAX_TICKET_ID_LENGTH = 64;
 
@@ -51,7 +52,8 @@ export type TicketType = 'story' | 'spike';
 
 export interface Ticket {
   type: TicketType;
-  content: string;
+  title: string;
+  description: string;
 }
 
 const isTicketType = (value: unknown): value is TicketType => value === 'story' || value === 'spike';
@@ -61,18 +63,24 @@ export type ClientMessage =
   | { type: 'reveal' }
   | { type: 'reset' }
   | { type: 'addTicket'; ticket: Ticket }
-  | { type: 'editTicket'; ticketId: string; content: string; ticketType?: TicketType }
+  | { type: 'editTicket'; ticketId: string; title: string; description: string; ticketType?: TicketType }
   | { type: 'removeTicket'; ticketId: string }
   | { type: 'selectTicket'; ticketId: string }
   | { type: 'setSpectating'; spectating: boolean };
 
 export type ParseResult = { ok: true; message: ClientMessage } | { ok: false; error: string };
 
-function parseContent(content: unknown): string | null {
-  if (typeof content !== 'string') return null;
-  const trimmed = content.trim();
+function parseTitle(title: unknown): string | null {
+  if (typeof title !== 'string') return null;
+  const trimmed = title.trim();
   const length = charLength(trimmed);
-  return length >= 1 && length <= MAX_TICKET_LENGTH ? trimmed : null;
+  return length >= 1 && length <= MAX_TICKET_TITLE_LENGTH && !/[\r\n\u2028\u2029]/.test(trimmed) ? trimmed : null;
+}
+
+function parseDescription(description: unknown): string | null {
+  if (typeof description !== 'string') return null;
+  const trimmed = description.trim();
+  return charLength(trimmed) <= MAX_TICKET_DESCRIPTION_LENGTH ? trimmed : null;
 }
 
 function isTicketId(value: unknown): value is string {
@@ -107,18 +115,22 @@ export function parseClientMessage(raw: string): ParseResult {
       const invalid = { ok: false, error: 'Invalid addTicket message' } as const;
       const { ticket } = message;
       if (typeof ticket !== 'object' || ticket === null || Array.isArray(ticket)) return invalid;
-      const { type, content } = ticket as Record<string, unknown>;
-      const trimmed = parseContent(content);
-      if (!isTicketType(type) || trimmed === null) return invalid;
-      return { ok: true, message: { type: 'addTicket', ticket: { type, content: trimmed } } };
+      const fields = ticket as Record<string, unknown>;
+      const { type } = fields;
+      const title = parseTitle(fields.title);
+      const description = parseDescription(fields.description);
+      if (!isTicketType(type) || title === null || description === null) return invalid;
+      return { ok: true, message: { type: 'addTicket', ticket: { type, title, description } } };
     }
     case 'editTicket': {
+      const invalid = { ok: false, error: 'Invalid editTicket message' } as const;
       const { ticketId, ticketType } = message;
-      const content = parseContent(message.content);
-      if (!isTicketId(ticketId) || content === null) return { ok: false, error: 'Invalid editTicket message' };
-      if (ticketType === undefined) return { ok: true, message: { type: 'editTicket', ticketId, content } };
-      if (!isTicketType(ticketType)) return { ok: false, error: 'Invalid editTicket message' };
-      return { ok: true, message: { type: 'editTicket', ticketId, content, ticketType } };
+      const title = parseTitle(message.title);
+      const description = parseDescription(message.description);
+      if (!isTicketId(ticketId) || title === null || description === null) return invalid;
+      if (ticketType === undefined) return { ok: true, message: { type: 'editTicket', ticketId, title, description } };
+      if (!isTicketType(ticketType)) return invalid;
+      return { ok: true, message: { type: 'editTicket', ticketId, title, description, ticketType } };
     }
     case 'removeTicket':
     case 'selectTicket': {

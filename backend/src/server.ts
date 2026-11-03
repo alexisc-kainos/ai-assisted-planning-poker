@@ -90,7 +90,13 @@ export function createAppServer(config: Config): AppServer {
           error = conn.room.addTicket(conn.userId, message.ticket);
           break;
         case 'editTicket':
-          error = conn.room.editTicket(conn.userId, message.ticketId, message.content, message.ticketType);
+          error = conn.room.editTicket(
+            conn.userId,
+            message.ticketId,
+            message.title,
+            message.description,
+            message.ticketType,
+          );
           break;
         case 'removeTicket':
           error = conn.room.removeTicket(conn.userId, message.ticketId);

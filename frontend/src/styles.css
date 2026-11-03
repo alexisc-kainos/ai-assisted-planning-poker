@@ -110,7 +110,15 @@ code {
 .room-code {
   color: var(--muted);
   font-size: 0.95rem;
-  white-space: nowrap;
+  white-space: normal;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.room-code code,
+.room-title code {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 480px) {
@@ -476,8 +484,12 @@ textarea[aria-invalid='true'] {
   overflow-wrap: anywhere;
 }
 
-.now-voting-text {
+.now-voting-description {
+  max-width: 70ch;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 1.05rem;
 }
 
 .now-voting strong {
@@ -778,9 +790,19 @@ textarea[aria-invalid='true'] {
 }
 
 .ticket-content {
-  white-space: pre-wrap;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
   overflow-wrap: anywhere;
+}
+
+.ticket-title {
   font-size: 1.05rem;
+}
+
+.ticket-description {
+  white-space: pre-wrap;
+  color: var(--muted);
 }
 
 .ticket-list {
