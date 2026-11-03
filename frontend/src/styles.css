@@ -110,7 +110,15 @@ code {
 .room-code {
   color: var(--muted);
   font-size: 0.95rem;
-  white-space: nowrap;
+  white-space: normal;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.room-code code,
+.room-title code {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 480px) {
