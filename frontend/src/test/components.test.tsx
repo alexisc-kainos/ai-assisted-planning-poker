@@ -200,6 +200,7 @@ describe('TicketPanel', () => {
   it('lets the host add a story ticket by default', async () => {
     const { onAdd } = renderPanel();
     expect(screen.getByRole('heading', { name: 'Tickets' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Add Tickets', level: 2 })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Story' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Spike' })).toBeEnabled();
 

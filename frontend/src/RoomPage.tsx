@@ -55,7 +55,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
   const url = joinUrl(roomId);
 
   if (status === 'joined' && state) {
-    const ticketType = state.tickets.find((ticket) => ticket.id === state.activeTicketId)?.type ?? 'story';
+    const activeTicketIndex = state.tickets.findIndex((ticket) => ticket.id === state.activeTicketId);
+    const ticketType = state.tickets[activeTicketIndex]?.type ?? 'story';
     const spectating = state.users.find((user) => user.id === userId)?.spectating ?? false;
     const votes = state.votes ?? {};
     const isHost = state.hostId === userId;
@@ -120,7 +121,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
             onSelect={selectTicket}
           />
         </div>
-        {state.activeTicketId !== null && <Mascot className="mascot room-mascot" />}
+        {activeTicketIndex >= 0 && <Mascot className="mascot room-mascot" ticketIndex={activeTicketIndex} />}
       </div>
     );
   }

@@ -13,7 +13,8 @@ function Landing() {
   return (
     <section className="card landing">
       <Mascot />
-      <p>Open a room, share the link, and estimate together — no accounts needed.</p>
+      <h2>Welcome to Planning Poker</h2>
+      <p>Open a room, share the link, and estimate together.</p>
       <button type="button" className="primary" onClick={createRoom}>
         Create a room
       </button>

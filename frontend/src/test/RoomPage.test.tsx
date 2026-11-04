@@ -90,6 +90,12 @@ describe('RoomPage', () => {
     const items = screen.getAllByRole('listitem');
     expect(items[0]).toHaveTextContent('AliceHost');
     expect(items[1]).toHaveTextContent('Bob (you)');
+    const sidebar = screen.getByRole('complementary', { name: 'Room' });
+    expect(sidebar).toHaveClass('room-side');
+    expect(within(sidebar).getByRole('region', { name: 'Share this room' })).toBeInTheDocument();
+    expect(within(sidebar).getByRole('switch', { name: 'Spectate' })).toBeInTheDocument();
+    expect(within(sidebar).getAllByRole('listitem')).toHaveLength(2);
+    expect(sidebar.querySelector('img')).toHaveAttribute('src', expect.stringContaining('cat.jpg'));
     expect(screen.getByLabelText('Invite your team with this link')).toHaveValue(
       `${window.location.origin}${window.location.pathname}?room=${ROOM}`,
     );
@@ -167,10 +173,41 @@ describe('RoomPage', () => {
 
     const pressed = (name: string) => screen.getByRole('button', { name }).getAttribute('aria-pressed');
 
+    it('uses ticket order for the scene, wrapping at ticket five and preserving it across rounds', async () => {
+      const ws = await joinAs('user-b');
+      const tickets = Array.from({ length: 5 }, (_, index) => ({
+        id: `ticket-${index + 1}`,
+        type: index === 1 ? 'spike' : 'story',
+        title: `Ticket ${index + 1}`,
+        description: '',
+        result: null,
+      }));
+      const filenames = ['riverside.jpg', 'riverside-2.jpg', 'riverside-3.jpg', 'riverside-4.jpg', 'riverside.jpg'];
+      for (const index of [0, 1, 2, 3, 4, 1, 0]) {
+        ws.emit({ ...roomState(null), tickets, activeTicketId: tickets[index].id });
+        const scene = document.querySelector('.room-layout > .room-mascot');
+        expect(scene).toHaveAttribute('src', expect.stringContaining(filenames[index]));
+        ws.emit({ ...roomState(null), tickets, activeTicketId: tickets[index].id, revealed: true, votes: {} });
+        expect(scene).toHaveAttribute('src', expect.stringContaining(filenames[index]));
+        ws.emit({ ...roomState(null), tickets, activeTicketId: tickets[index].id, round: 1 });
+        expect(scene).toHaveAttribute('src', expect.stringContaining(filenames[index]));
+      }
+
+      ws.emit({ ...roomState(null), tickets, activeTicketId: null });
+      expect(document.querySelector('.room-mascot')).not.toBeInTheDocument();
+      expect(document.querySelector('.room-hero .mascot')).toHaveAttribute(
+        'src', expect.stringContaining('riverside.jpg'),
+      );
+    });
+
     it('sends my vote, highlights the vote the server holds, and lets me change it', async () => {
       const ws = await joinAs('user-b');
       const user = userEvent.setup();
       expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
+      expect(within(screen.getByRole('region', { name: 'Current ticket' })).getByText('As a user I log in')).toBeInTheDocument();
+      expect(document.querySelector('.room-layout > .room-mascot')).toHaveAttribute(
+        'src', expect.stringContaining('riverside.jpg'),
+      );
 
       await user.click(screen.getByRole('button', { name: '5' }));
       expect(ws.sent).toEqual([{ type: 'vote', value: '5', round: 0 }]);

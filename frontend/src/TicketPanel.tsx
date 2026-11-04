@@ -134,6 +134,7 @@ function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: Ticke
 
   return (
     <div className="ticket-add">
+      <h2>Add Tickets</h2>
       <TicketTypeOptions value={type} onChange={setType} />
       <TicketFieldsForm
         key={formKey}
