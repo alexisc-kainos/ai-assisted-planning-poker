@@ -62,7 +62,7 @@ export function JoinForm({ onJoin, busy = false }: JoinFormProps) {
                 className="visually-hidden"
               />
               <Avatar id={option.id} size={56} />
-              <span>{option.label}</span>
+              <span className="visually-hidden">{option.label}</span>
             </label>
           ))}
         </div>

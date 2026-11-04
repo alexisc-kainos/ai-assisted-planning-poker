@@ -11,6 +11,19 @@ describe('App top bar', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Planning Poker' })).toBeInTheDocument();
     expect(screen.queryByText('Room')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create a room' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Welcome to Planning Poker' })).toBeInTheDocument();
+    expect(screen.queryByText(/no accounts needed/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('banner')).not.toHaveTextContent('Riverside Lounge');
+  });
+
+  describe('supplied riverside artwork', () => {
+    it('replaces the illustration without changing the existing landing shell', () => {
+      const { container } = render(<App />);
+      const scene = container.querySelector('.narrow .landing img.mascot');
+      expect(scene).toHaveAttribute('src', expect.stringContaining('riverside.jpg'));
+      expect(scene).toHaveAttribute('alt', '');
+      expect(scene).toHaveAttribute('aria-hidden', 'true');
+    });
   });
 
   it('shows the room code inside a valid room', () => {

@@ -5,6 +5,10 @@ An animal-themed planning poker app. A facilitator opens a room and shares the j
 - `backend/`: Node.js + [`ws`](https://github.com/websockets/ws) server that implements [docs/api-contract.md](docs/api-contract.md). All state is held in memory.
 - `frontend/`: Vite + React single-page app.
 
+The UI uses supplied animal portraits and a riverside illustration, preserving
+the room sidebar and existing responsive layout. See
+[artwork provenance and extraction](frontend/src/assets/README.md).
+
 ## Local development
 
 Requires Node 22 (see `.nvmrc`).
