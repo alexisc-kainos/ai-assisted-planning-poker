@@ -888,5 +888,39 @@ describe('RoomPage', () => {
       });
       expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
     });
+
+    it('stops immediately on a replacement message even if the close code is lost', async () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      vi.useFakeTimers();
+      render(<RoomPage roomId={ROOM} />);
+      const ws = FakeWebSocket.instances[0];
+      const close = vi.spyOn(ws, 'close');
+      ws.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      ws.emit(state);
+      ws.emit({ type: 'replaced' });
+
+      expect(screen.getByRole('alert')).toHaveTextContent('This room was opened in another tab or window.');
+      expect(close).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('button', { name: 'Reveal votes' })).not.toBeInTheDocument();
+
+      ws.emit(state);
+      ws.serverClose(1006);
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(screen.getByRole('alert')).toHaveTextContent('This room was opened in another tab or window.');
+      expect(localStorage.getItem(`ppk:session:${ROOM}`)).toBe(TOKEN);
+      vi.useRealTimers();
+
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Use this tab instead' }));
+      const resumed = FakeWebSocket.instances[1];
+      resumed.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      resumed.emit({ ...state, myVote: '5' });
+      ws.emit({ type: 'replaced' });
+      ws.emit({ ...state, myVote: '8' });
+      ws.serverClose(4002);
+
+      expect(screen.getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
   });
 });

@@ -188,6 +188,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       // Detach first so its close handler doesn't mark the member away.
       clearTimeout(connections.get(previous)?.pongTimer);
       connections.delete(previous);
+      send(previous, { type: 'replaced' });
       previous.close(4002, 'replaced');
     }
     room.rejoin(member);

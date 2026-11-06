@@ -85,6 +85,7 @@ export function useRoom(roomId: string) {
       let token = 'token' in credentials ? credentials.token : null;
 
       ws.onmessage = (event) => {
+        if (socketRef.current !== ws) return;
         const message = JSON.parse(event.data) as ServerMessage;
         if (message.type === 'welcome') {
           welcomed = true;
@@ -97,6 +98,15 @@ export function useRoom(roomId: string) {
           setError(null);
         } else if (message.type === 'error') {
           setError(message.message);
+        } else if (message.type === 'replaced') {
+          // A proxy can lose the close frame and report 1006 instead of 4002.
+          socketRef.current = null;
+          clearTimeout(reconnectTimer.current);
+          setState(null);
+          setUserId(null);
+          setStatus('replaced');
+          setError(null);
+          ws.close();
         }
       };
 
