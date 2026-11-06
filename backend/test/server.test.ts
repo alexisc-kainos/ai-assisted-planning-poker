@@ -355,6 +355,7 @@ describe('rejoining with a token', () => {
     const { host, guest, guestWelcome } = await hostAndGuest();
     const closed = closeOf(guest);
     const second = await connect(port, { room: ROOM, token: guestWelcome.token });
+    expect(await guest.next('replaced')).toEqual({ type: 'replaced' });
     expect(await closed).toEqual([4002, 'replaced']);
     await second.next('welcome');
     const state = await second.next('state');

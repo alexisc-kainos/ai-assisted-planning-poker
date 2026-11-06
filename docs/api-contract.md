@@ -50,7 +50,7 @@ Every `welcome` carries a reconnect `token`, a secret unique to that member (unl
 
 - Restores the same member: same `id`, `seq`, name, avatar, spectating choice and current-round vote. The member is no longer away.
 - If the member is the room's original host (its first member), they become host again immediately.
-- If the member already has an open connection (e.g. a second tab, or a drop the server hasn't detected yet), the new connection takes over and the old one is closed with `4002 "replaced"`.
+- If the member already has an open connection (e.g. a second tab, or a drop the server hasn't detected yet), the new connection takes over. The old one receives a `replaced` message and is then closed with `4002 "replaced"`.
 - If the room no longer exists or the token isn't recognised in that room, the socket is opened and then closed with `4001 "session_expired"`; no room is created. Clients should forget the token and show the join form.
 
 The token stays the same for the member's lifetime and stops working when the room closes, or when someone [takes over](#taking-over-an-away-member) the member.
@@ -98,6 +98,16 @@ Sent once to a client, immediately after its connection is accepted — before a
 ```
 
 Tells the client its own assigned `id` and its reconnect `token`. The frontend should store `userId` and compare it against `state.users[].id` and `state.hostId` to know which user is "me" and whether it's currently host. Clients never send `userId` back to the server; the server always identifies the sender by its own connection-to-user mapping, so there's no field a client could spoof to act as another user. Keep `token` private to this browser; it is only sent back as the `token` connect param to rejoin.
+
+### `replaced`
+
+Sent to the previous connection when the same member opens the room in another tab or window, before the server closes that connection with `4002 "replaced"`.
+
+```json
+{ "type": "replaced" }
+```
+
+Stop accepting room actions and reconnecting automatically as soon as this message arrives, keep the saved token, and show **Use this tab instead**. Ignore further events from that socket. Do not wait for the close event: intermediaries can lose the close frame and report `1006` instead, which would otherwise cause tabs to repeatedly reconnect and take the session from each other.
 
 ### `state`
 
@@ -180,7 +190,7 @@ The full error vocabulary:
 | Heartbeat pong timeout | (no app-level `error`; socket closed with code 1011) |
 | Server shutdown | (no app-level `error`; socket closed with code 1001 "server_shutdown") |
 | Rejoin with an unknown token or for a closed room | (no app-level `error`; socket closed with code 4001 "session_expired") |
-| Same member rejoined from another connection | (no app-level `error`; old socket closed with code 4002 "replaced") |
+| Same member rejoined from another connection | Old socket receives `replaced`, then closes with code 4002 "replaced" |
 
 The socket is kept open after any `error` except where noted.
 
@@ -281,6 +291,7 @@ There is **no** `leave` message. When a WebSocket closes, the member is marked a
 - No authentication — anyone with the room URL can join. Treat room IDs as shareable-but-unguessable join codes, not secrets.
 - Implement a WS-layer reconnect strategy that sends the saved `token`; the contract guarantees `welcome` → `state` ordering on every new connection, including rejoins.
 - Store the reconnect token per room (e.g. in `localStorage`) to restore the member after a refresh or reopening the link.
+- Handle `replaced` immediately, without waiting for the socket to close. Only process messages and close events from the current socket, so late events cannot overwrite a resumed session.
 - Treat server-initiated close codes:
   - `1001 "server_shutdown"` — backend is restarting; reconnect after a short delay (hosting provider may spin down).
   - `4001 "session_expired"` — the saved token is no longer valid; forget it and show the join form.

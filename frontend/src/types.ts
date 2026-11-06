@@ -42,6 +42,7 @@ export interface RoomState {
 
 export type ServerMessage =
   | { type: 'welcome'; userId: string; token: string }
+  | { type: 'replaced' }
   | RoomState
   | { type: 'error'; message: string };
 
