@@ -43,6 +43,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
     userId,
     state,
     join,
+    resume,
     vote,
     reveal,
     reset,
@@ -126,7 +127,24 @@ export function RoomPage({ roomId }: { roomId: string }) {
     );
   }
 
-  const busy = status === 'checking' || status === 'connecting' || status === 'reconnecting';
+  const restoring = status === 'rejoining' || status === 'reconnecting';
+  const busy = status === 'checking' || status === 'connecting' || restoring;
+
+  if (status === 'replaced') {
+    return (
+      <div className="narrow">
+        <h2 className="room-title">
+          Room <code>{roomId}</code>
+        </h2>
+        <section className="card">
+          <p role="alert">This room was opened in another tab or window.</p>
+          <button type="button" className="primary" onClick={resume}>
+            Use this tab instead
+          </button>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="narrow">
@@ -145,10 +163,10 @@ export function RoomPage({ roomId }: { roomId: string }) {
       )}
       {busy && (
         <p className="notice" role="status">
-          {status === 'reconnecting' ? 'Reconnecting…' : 'Connecting… the server may take up to a minute to wake up.'}
+          {restoring ? 'Reconnecting…' : 'Connecting… the server may take up to a minute to wake up.'}
         </p>
       )}
-      <JoinForm onJoin={join} busy={busy} />
+      {!restoring && <JoinForm onJoin={join} busy={busy} />}
     </div>
   );
 }

@@ -8,6 +8,7 @@ export interface Config {
   rateLimitWindowMs: number;
   allowedOrigins: string[];
   roomKeepAwakeDurationMs: number;
+  roomCloseGraceMs: number;
   renderExternalUrl?: string;
 }
 
@@ -59,6 +60,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       .map((origin) => origin.trim())
       .filter(Boolean),
     roomKeepAwakeDurationMs: readPositiveInt(env, 'ROOM_KEEP_AWAKE_DURATION_MS', 90 * 60 * 1_000),
+    roomCloseGraceMs: readInt(env, 'ROOM_CLOSE_GRACE_MS', 60_000),
     renderExternalUrl: readOptionalHttpUrl(env, 'RENDER_EXTERNAL_URL'),
   };
 }

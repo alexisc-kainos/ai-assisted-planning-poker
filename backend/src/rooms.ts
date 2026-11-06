@@ -4,10 +4,12 @@ import { MAX_TICKETS, type Ticket, type TicketType } from './validation.js';
 export interface Member {
   id: string;
   seq: number;
+  token: string;
   name: string;
   avatar?: string;
   vote?: string;
   spectating: boolean;
+  connected: boolean;
 }
 
 export interface TicketResult {
@@ -28,7 +30,7 @@ export interface StateMessage {
   tickets: RoomTicket[];
   activeTicketId: string | null;
   round: number;
-  users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean; spectating: boolean }>;
+  users: Array<{ id: string; name: string; avatar?: string; hasVoted: boolean; spectating: boolean; away: boolean }>;
   votes: Record<string, string> | null;
   myVote: string | null;
 }
@@ -36,6 +38,7 @@ export interface StateMessage {
 export class Room {
   private readonly members = new Map<string, Member>();
   private nextSeq = 1;
+  private originalHostId: string | null = null;
   hostId: string | null = null;
   revealed = false;
   tickets: RoomTicket[] = [];
@@ -47,8 +50,15 @@ export class Room {
     readonly deck?: string,
   ) {}
 
+  /** Includes away members, who keep their place. */
   get size(): number {
     return this.members.size;
+  }
+
+  get connectedCount(): number {
+    let count = 0;
+    for (const member of this.members.values()) if (member.connected) count += 1;
+    return count;
   }
 
   add(name: string, avatar?: string, spectating = false): Member {
@@ -57,20 +67,34 @@ export class Room {
       id = `user-${randomBytes(6).toString('hex')}`;
     } while (this.members.has(id));
 
-    const member: Member = { id, seq: this.nextSeq++, name, avatar, spectating };
+    const token = randomBytes(24).toString('base64url');
+    const member: Member = { id, seq: this.nextSeq++, token, name, avatar, spectating, connected: true };
     this.members.set(id, member);
     this.hostId ??= id;
+    this.originalHostId ??= id;
     return member;
   }
 
-  remove(userId: string): void {
-    this.members.delete(userId);
+  findByToken(token: string): Member | undefined {
+    for (const member of this.members.values()) if (member.token === token) return member;
+    return undefined;
+  }
+
+  markAway(userId: string): void {
+    const member = this.members.get(userId);
+    if (!member) return;
+    member.connected = false;
     if (this.hostId !== userId) return;
     let next: Member | undefined;
-    for (const member of this.members.values()) {
-      if (!next || member.seq < next.seq) next = member;
+    for (const candidate of this.members.values()) {
+      if (candidate.connected && (!next || candidate.seq < next.seq)) next = candidate;
     }
     this.hostId = next?.id ?? null;
+  }
+
+  rejoin(member: Member): void {
+    member.connected = true;
+    if (member.id === this.originalHostId || this.hostId === null) this.hostId = member.id;
   }
 
   /** Each action returns an error message, or null when state changed. */
@@ -171,12 +195,13 @@ export class Room {
       tickets: this.tickets,
       activeTicketId: this.activeTicketId,
       round: this.round,
-      users: members.map(({ id, name, avatar, vote, spectating }) => ({
+      users: members.map(({ id, name, avatar, vote, spectating, connected }) => ({
         id,
         name,
         ...(avatar ? { avatar } : {}),
         hasVoted: vote !== undefined,
         spectating,
+        away: !connected,
       })),
       votes: this.revealed ? this.revealedVotes(members) : null,
       myVote: this.members.get(forUserId)?.vote ?? null,

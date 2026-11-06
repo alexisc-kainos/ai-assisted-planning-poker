@@ -79,9 +79,9 @@ describe('Roster', () => {
         hostId="user-1"
         meId="user-2"
         users={[
-          { id: 'user-1', name: 'Sam', avatar: 'penguin', hasVoted: false, spectating: false },
-          { id: 'user-2', name: 'Sam', avatar: 'penguin', hasVoted: false, spectating: false },
-          { id: 'user-3', name: 'Kim', hasVoted: false, spectating: false },
+          { id: 'user-1', name: 'Sam', avatar: 'penguin', hasVoted: false, spectating: false, away: false },
+          { id: 'user-2', name: 'Sam', avatar: 'penguin', hasVoted: false, spectating: false, away: false },
+          { id: 'user-3', name: 'Kim', hasVoted: false, spectating: false, away: false },
         ]}
       />,
     );
@@ -102,8 +102,8 @@ describe('Roster', () => {
         hostId="user-1"
         meId="user-1"
         users={[
-          { id: 'user-1', name: 'Sam', hasVoted: true, spectating: false },
-          { id: 'user-2', name: 'Kim', hasVoted: false, spectating: false },
+          { id: 'user-1', name: 'Sam', hasVoted: true, spectating: false, away: false },
+          { id: 'user-2', name: 'Kim', hasVoted: false, spectating: false, away: false },
         ]}
       />,
     );
@@ -120,8 +120,8 @@ describe('Roster', () => {
         hostId="user-1"
         meId="user-2"
         users={[
-          { id: 'user-1', name: 'Sam', hasVoted: false, spectating: true },
-          { id: 'user-2', name: 'Kim', hasVoted: false, spectating: false },
+          { id: 'user-1', name: 'Sam', hasVoted: false, spectating: true, away: false },
+          { id: 'user-2', name: 'Kim', hasVoted: false, spectating: false, away: false },
         ]}
       />,
     );
@@ -130,6 +130,27 @@ describe('Roster', () => {
     expect(items[0]).not.toHaveTextContent(/Voted|Waiting/);
     expect(items[1]).toHaveTextContent('Waiting');
     expect(items[1]).not.toHaveTextContent('Spectating');
+  });
+
+  it('marks away members with an Away badge instead of Voted, Waiting or Spectating', () => {
+    render(
+      <Roster
+        hostId="user-1"
+        meId="user-3"
+        users={[
+          { id: 'user-1', name: 'Sam', hasVoted: false, spectating: false, away: true },
+          { id: 'user-2', name: 'Kim', hasVoted: true, spectating: true, away: true },
+          { id: 'user-3', name: 'Lee', hasVoted: false, spectating: false, away: false },
+        ]}
+      />,
+    );
+    const items = screen.getAllByRole('listitem');
+    expect(items[0]).toHaveTextContent('SamHostAway');
+    expect(items[0]).not.toHaveTextContent('Waiting');
+    expect(items[1]).toHaveTextContent('KimAway');
+    expect(items[1]).not.toHaveTextContent(/Voted|Spectating/);
+    expect(items[2]).toHaveTextContent('Waiting');
+    expect(items[2]).not.toHaveTextContent('Away');
   });
 });
 

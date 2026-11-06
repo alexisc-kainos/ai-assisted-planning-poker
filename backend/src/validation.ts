@@ -15,13 +15,11 @@ export function isValidRoomId(value: string | null | undefined): value is string
   return typeof value === 'string' && value.length <= MAX_ROOM_ID_LENGTH && ROOM_ID_PATTERN.test(value);
 }
 
-export interface ConnectParams {
-  room: string;
-  name: string;
-  deck?: string;
-  avatar?: string;
-  spectating?: boolean;
-}
+const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32}$/;
+
+export type ConnectParams =
+  | { room: string; token: string }
+  | { room: string; token?: undefined; name: string; deck?: string; avatar?: string; spectating?: boolean };
 
 type OptionalResult = { ok: true; value?: string } | { ok: false };
 
@@ -34,6 +32,9 @@ function parseOptional(raw: string | null, max: number): OptionalResult {
 export function parseConnectParams(params: URLSearchParams): ConnectParams | null {
   const room = params.get('room');
   if (!isValidRoomId(room)) return null;
+
+  const token = params.get('token');
+  if (token !== null) return TOKEN_PATTERN.test(token) ? { room, token } : null;
 
   const name = params.get('name')?.trim();
   if (!name || charLength(name) > MAX_NAME_LENGTH) return null;

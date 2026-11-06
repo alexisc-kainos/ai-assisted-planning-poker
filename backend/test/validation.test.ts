@@ -55,16 +55,26 @@ describe('parseConnectParams', () => {
   });
 
   it('accepts a 32 character name', () => {
-    expect(parse({ room: 'abcd', name: 'x'.repeat(32) })?.name).toHaveLength(32);
+    expect(parse({ room: 'abcd', name: 'x'.repeat(32) })).toMatchObject({ name: 'x'.repeat(32) });
   });
 
   it('reads spectating=1 as spectating and omits it when absent', () => {
-    expect(parse({ room: 'abcd', name: 'Bob', spectating: '1' })?.spectating).toBe(true);
+    expect(parse({ room: 'abcd', name: 'Bob', spectating: '1' })).toMatchObject({ spectating: true });
     expect(parse({ room: 'abcd', name: 'Bob' })).not.toHaveProperty('spectating');
   });
 
   it.each(['0', 'true', ''])('rejects spectating=%j', (spectating) => {
     expect(parse({ room: 'abcd', name: 'Bob', spectating })).toBeNull();
+  });
+
+  it('accepts a reconnect token without a name and ignores other params', () => {
+    const token = 'Ab9_-'.repeat(6) + 'xy';
+    expect(parse({ room: 'abcd', token })).toEqual({ room: 'abcd', token });
+    expect(parse({ room: 'abcd', token, name: 'Bob', spectating: '1' })).toEqual({ room: 'abcd', token });
+  });
+
+  it.each(['', 'short', 'x'.repeat(33), `${'x'.repeat(31)}!`])('rejects token %j', (token) => {
+    expect(parse({ room: 'abcd', name: 'Bob', token })).toBeNull();
   });
 });
 
@@ -211,12 +221,22 @@ describe('parseClientMessage', () => {
 
 describe('loadConfig', () => {
   it('applies defaults', () => {
-    expect(loadConfig({})).toMatchObject({ port: 3000, maxRoomUsers: 50, allowedOrigins: ['http://localhost:5173'] });
+    expect(loadConfig({})).toMatchObject({
+      port: 3000,
+      maxRoomUsers: 50,
+      roomCloseGraceMs: 60_000,
+      allowedOrigins: ['http://localhost:5173'],
+    });
   });
 
   it('parses overrides', () => {
-    const config = loadConfig({ MAX_ROOM_USERS: '30', ALLOWED_ORIGINS: 'https://a.example, https://b.example' });
+    const config = loadConfig({
+      MAX_ROOM_USERS: '30',
+      ROOM_CLOSE_GRACE_MS: '5000',
+      ALLOWED_ORIGINS: 'https://a.example, https://b.example',
+    });
     expect(config.maxRoomUsers).toBe(30);
+    expect(config.roomCloseGraceMs).toBe(5_000);
     expect(config.allowedOrigins).toEqual(['https://a.example', 'https://b.example']);
   });
 

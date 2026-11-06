@@ -6,6 +6,7 @@ export interface RosterUser {
   avatar?: string;
   hasVoted: boolean;
   spectating: boolean;
+  away: boolean;
 }
 
 export type TicketFields = Pick<Ticket, 'title' | 'description'>;
@@ -40,7 +41,7 @@ export interface RoomState {
 }
 
 export type ServerMessage =
-  | { type: 'welcome'; userId: string }
+  | { type: 'welcome'; userId: string; token: string }
   | RoomState
   | { type: 'error'; message: string };
 
