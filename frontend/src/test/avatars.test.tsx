@@ -57,7 +57,7 @@ describe('supplied avatar artwork', () => {
   it('uses the same portrait in the roster without changing the accessible participant name', () => {
     const { container } = render(
       <Roster
-        users={[{ id: 'alice', name: 'Alice', avatar: 'red-panda', hasVoted: false, spectating: false }]}
+        users={[{ id: 'alice', name: 'Alice', avatar: 'red-panda', hasVoted: false, spectating: false, away: false }]}
         hostId="alice"
         meId="alice"
       />,

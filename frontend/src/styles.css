@@ -323,6 +323,11 @@ textarea[aria-invalid='true'] {
   color: var(--spectating-fg);
 }
 
+.badge.away {
+  background: var(--badge-bg);
+  color: var(--muted);
+}
+
 .mascot {
   display: block;
   width: 100%;

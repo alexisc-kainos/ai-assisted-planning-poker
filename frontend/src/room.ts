@@ -34,3 +34,22 @@ export function markCreator(roomId: string): void {
 export function isCreator(roomId: string): boolean {
   return sessionStorage.getItem(creatorKey(roomId)) === '1';
 }
+
+// localStorage so the session survives closing the tab.
+const sessionKey = (roomId: string) => `ppk:session:${roomId}`;
+
+export function saveSession(roomId: string, token: string): void {
+  try {
+    localStorage.setItem(sessionKey(roomId), token);
+  } catch {
+    // A storage failure must not prevent the live session from joining.
+  }
+}
+
+export function loadSession(roomId: string): string | null {
+  return localStorage.getItem(sessionKey(roomId));
+}
+
+export function clearSession(roomId: string): void {
+  localStorage.removeItem(sessionKey(roomId));
+}

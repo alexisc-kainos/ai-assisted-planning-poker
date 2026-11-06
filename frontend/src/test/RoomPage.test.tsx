@@ -33,6 +33,7 @@ class FakeWebSocket {
 }
 
 const ROOM = 'xk29-4plm';
+const TOKEN = 'abcdefghijklmnopqrstuvwxyz012345';
 
 function mockRoomStatus(body: object) {
   const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => body });
@@ -644,19 +645,118 @@ describe('RoomPage', () => {
       expect(FakeWebSocket.instances).toHaveLength(1);
     });
 
-    it('rejoins as a spectator if I was spectating', async () => {
+    it('reconnects with the saved token instead of name and avatar', async () => {
       mockRoomStatus({ exists: false, userCount: 0, capacity: 50, full: false });
       render(<RoomPage roomId={ROOM} />);
       await fillAndJoin();
       await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-      expect(new URL(FakeWebSocket.instances[0].url).searchParams.has('spectating')).toBe(false);
-      FakeWebSocket.instances[0].emit({ type: 'welcome', userId: 'user-a' });
-      FakeWebSocket.instances[0].emit({ ...state, users: [{ ...state.users[0], spectating: true }] });
+      FakeWebSocket.instances[0].emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      FakeWebSocket.instances[0].emit(state);
+      expect(localStorage.getItem(`ppk:session:${ROOM}`)).toBe(TOKEN);
       vi.useFakeTimers();
-      FakeWebSocket.instances[0].serverClose(1001);
+      FakeWebSocket.instances[0].serverClose(1006);
+      expect(screen.queryByLabelText('Your name')).not.toBeInTheDocument();
 
       advance(reconnectDelay(0));
-      expect(new URL(FakeWebSocket.instances[1].url).searchParams.get('spectating')).toBe('1');
+      expect(Object.fromEntries(new URL(FakeWebSocket.instances[1].url).searchParams)).toEqual({
+        room: ROOM,
+        token: TOKEN,
+      });
+    });
+  });
+
+  describe('restoring a saved session', () => {
+    const state = {
+      type: 'state',
+      hostId: 'user-a',
+      revealed: false,
+      tickets: [],
+      activeTicketId: null,
+      round: 0,
+      users: [{ id: 'user-a', name: 'Alice', avatar: 'capybara', hasVoted: false, spectating: false, away: false }],
+      votes: null,
+      myVote: null,
+    };
+
+    it('rejoins automatically without showing the join form', () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      const fetchMock = mockRoomStatus({ exists: true, userCount: 50, capacity: 50, full: true });
+      render(<RoomPage roomId={ROOM} />);
+
+      expect(screen.queryByLabelText('Your name')).not.toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      const ws = FakeWebSocket.instances[0];
+      expect(Object.fromEntries(new URL(ws.url).searchParams)).toEqual({ room: ROOM, token: TOKEN });
+
+      ws.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      ws.emit(state);
+      expect(screen.getByRole('listitem')).toHaveTextContent('Alice (you)Host');
+    });
+
+    it('forgets the saved session and shows the join form when the room has closed', () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      render(<RoomPage roomId={ROOM} />);
+      FakeWebSocket.instances[0].serverClose(4001);
+
+      expect(localStorage.getItem(`ppk:session:${ROOM}`)).toBeNull();
+      expect(screen.getByLabelText('Your name')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('retries manually with the saved token without checking room capacity', async () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      const fetchMock = mockRoomStatus({ exists: true, userCount: 50, capacity: 50, full: true });
+      vi.useFakeTimers();
+      render(<RoomPage roomId={ROOM} />);
+      FakeWebSocket.instances[0].serverClose(1006);
+      for (let attempt = 1; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+        act(() => vi.advanceTimersByTime(reconnectDelay(attempt)));
+        FakeWebSocket.instances.at(-1)!.serverClose(1006);
+      }
+      vi.useRealTimers();
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't join — the room may be full or unavailable.");
+      await fillAndJoin();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      const manualRetry = FakeWebSocket.instances.at(-1)!;
+      expect(Object.fromEntries(new URL(manualRetry.url).searchParams)).toEqual({ room: ROOM, token: TOKEN });
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
+    });
+
+    it('ignores a session saved for a different room', () => {
+      localStorage.setItem('ppk:session:abcd-efgh', TOKEN);
+      render(<RoomPage roomId={ROOM} />);
+
+      expect(screen.getByLabelText('Your name')).toBeInTheDocument();
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it('stops when the room is opened in another tab and lets me take it back', async () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      vi.useFakeTimers();
+      render(<RoomPage roomId={ROOM} />);
+      const ws = FakeWebSocket.instances[0];
+      ws.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      ws.emit(state);
+      ws.serverClose(4002);
+
+      expect(screen.getByRole('alert')).toHaveTextContent('This room was opened in another tab or window.');
+      expect(screen.queryByLabelText('Your name')).not.toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(localStorage.getItem(`ppk:session:${ROOM}`)).toBe(TOKEN);
+      vi.useRealTimers();
+
+      await userEvent.setup().click(screen.getByRole('button', { name: 'Use this tab instead' }));
+      expect(FakeWebSocket.instances).toHaveLength(2);
+      expect(Object.fromEntries(new URL(FakeWebSocket.instances[1].url).searchParams)).toEqual({
+        room: ROOM,
+        token: TOKEN,
+      });
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
     });
   });
 });

@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_URL, DEFAULT_DECK, WS_URL } from './config';
-import { isCreator } from './room';
+import { clearSession, isCreator, loadSession, saveSession } from './room';
 import type { ClientMessage, RoomState, RoomStatus, ServerMessage, TicketFields, TicketType } from './types';
 
-export type JoinStatus = 'idle' | 'checking' | 'connecting' | 'joined' | 'reconnecting' | 'full' | 'error';
+export type JoinStatus =
+  | 'idle'
+  | 'checking'
+  | 'connecting'
+  | 'rejoining'
+  | 'joined'
+  | 'reconnecting'
+  | 'replaced'
+  | 'full'
+  | 'error';
+
+const SESSION_EXPIRED = 4001;
+const REPLACED = 4002;
 
 const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
@@ -19,35 +31,41 @@ export async function fetchRoomStatus(roomId: string): Promise<RoomStatus> {
   return res.json();
 }
 
+type Credentials = { token: string } | { name: string; avatar: string };
+
 export function useRoom(roomId: string) {
-  const [status, setStatus] = useState<JoinStatus>('idle');
+  const [status, setStatus] = useState<JoinStatus>(() => (loadSession(roomId) ? 'rejoining' : 'idle'));
   const [error, setError] = useState<string | null>(null);
   const [capacity, setCapacity] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
-  const spectatingRef = useRef(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const connect = useCallback(
-    (name: string, avatar: string, reconnectAttempt: number | null = null) => {
-      const params = new URLSearchParams({ room: roomId, name, avatar });
-      if (isCreator(roomId)) params.set('deck', DEFAULT_DECK);
-      if (spectatingRef.current) params.set('spectating', '1');
+    (credentials: Credentials, reconnectAttempt: number | null = null) => {
+      const params = new URLSearchParams({ room: roomId });
+      if ('token' in credentials) {
+        params.set('token', credentials.token);
+      } else {
+        params.set('name', credentials.name);
+        params.set('avatar', credentials.avatar);
+        if (isCreator(roomId)) params.set('deck', DEFAULT_DECK);
+      }
 
       const ws = new WebSocket(`${WS_URL}/ws?${params}`);
       socketRef.current = ws;
       let welcomed = false;
-      let myId: string | null = null;
+      let token = 'token' in credentials ? credentials.token : null;
 
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data) as ServerMessage;
         if (message.type === 'welcome') {
           welcomed = true;
-          myId = message.userId;
+          token = message.token;
+          saveSession(roomId, message.token);
           setUserId(message.userId);
         } else if (message.type === 'state') {
-          spectatingRef.current = message.users.find((user) => user.id === myId)?.spectating ?? false;
           setState(message);
           setStatus('joined');
           setError(null);
@@ -64,19 +82,24 @@ export function useRoom(roomId: string) {
 
         const retry = (attempt: number) => {
           setStatus('reconnecting');
-          reconnectTimer.current = setTimeout(() => connect(name, avatar, attempt), reconnectDelay(attempt));
+          const next = token ? { token } : credentials;
+          reconnectTimer.current = setTimeout(() => connect(next, attempt), reconnectDelay(attempt));
         };
 
-        if (welcomed && event.code === 1001) {
+        if (event.code === SESSION_EXPIRED) {
+          clearSession(roomId);
+          setStatus('idle');
+          setError(null);
+        } else if (event.code === REPLACED) {
+          setStatus('replaced');
+          setError(null);
+        } else if (welcomed) {
           retry(0);
-        } else if (!welcomed && reconnectAttempt !== null && reconnectAttempt + 1 < MAX_RECONNECT_ATTEMPTS) {
+        } else if (reconnectAttempt !== null && reconnectAttempt + 1 < MAX_RECONNECT_ATTEMPTS) {
           retry(reconnectAttempt + 1);
-        } else if (!welcomed) {
-          setStatus('error');
-          setError("Couldn't join — the room may be full or unavailable. Please try again.");
         } else {
           setStatus('error');
-          setError('You were disconnected from the room. Join again to continue.');
+          setError("Couldn't join — the room may be full or unavailable. Please try again.");
         }
       };
     },
@@ -85,9 +108,16 @@ export function useRoom(roomId: string) {
 
   const join = useCallback(
     async (name: string, avatar: string) => {
+      const token = loadSession(roomId);
+      if (token) {
+        setStatus('rejoining');
+        setError(null);
+        connect({ token }, 0);
+        return;
+      }
+
       setStatus('checking');
       setError(null);
-      spectatingRef.current = false;
       let roomStatus: RoomStatus;
       try {
         roomStatus = await fetchRoomStatus(roomId);
@@ -102,10 +132,17 @@ export function useRoom(roomId: string) {
         return;
       }
       setStatus('connecting');
-      connect(name, avatar);
+      connect({ name, avatar });
     },
     [roomId, connect],
   );
+
+  const resume = useCallback(() => {
+    const token = loadSession(roomId);
+    if (!token) return setStatus('idle');
+    setStatus('rejoining');
+    connect({ token }, 0);
+  }, [roomId, connect]);
 
   const send = useCallback((message: ClientMessage) => {
     const ws = socketRef.current;
@@ -138,15 +175,16 @@ export function useRoom(roomId: string) {
     [send],
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const token = loadSession(roomId);
+    if (token) connect({ token }, 0);
+    return () => {
       clearTimeout(reconnectTimer.current);
       const ws = socketRef.current;
       socketRef.current = null;
       ws?.close();
-    },
-    [],
-  );
+    };
+  }, [roomId, connect]);
 
   return {
     status,
@@ -155,6 +193,7 @@ export function useRoom(roomId: string) {
     userId,
     state,
     join,
+    resume,
     vote,
     reveal,
     reset,

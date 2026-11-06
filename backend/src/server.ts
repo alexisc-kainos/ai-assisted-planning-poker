@@ -4,7 +4,7 @@ import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { Config } from './config.js';
 import { KeepAwake, type KeepAwakeLifecycle } from './keepAwake.js';
-import { Room } from './rooms.js';
+import { Room, type Member } from './rooms.js';
 import { isValidRoomId, parseClientMessage, parseConnectParams, type ConnectParams } from './validation.js';
 
 interface Connection {
@@ -42,6 +42,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
   const rooms = new Map<string, Room>();
   const roomSockets = new Map<string, Map<string, WebSocket>>();
   const connections = new Map<WebSocket, Connection>();
+  const closeTimers = new Map<string, NodeJS.Timeout>();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
   const keepAwake =
     keepAwakeLifecycle ?? new KeepAwake(config.renderExternalUrl, config.roomKeepAwakeDurationMs);
@@ -119,6 +120,27 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     }
   };
 
+  const cancelClose = (roomId: string) => {
+    clearTimeout(closeTimers.get(roomId));
+    closeTimers.delete(roomId);
+  };
+
+  const closeRoom = (roomId: string) => {
+    cancelClose(roomId);
+    rooms.delete(roomId);
+    roomSockets.delete(roomId);
+    keepAwake.roomClosed(roomId);
+  };
+
+  const scheduleClose = (room: Room) => {
+    cancelClose(room.id);
+    const timer = setTimeout(() => {
+      if (rooms.get(room.id) === room && room.connectedCount === 0) closeRoom(room.id);
+    }, config.roomCloseGraceMs);
+    timer.unref();
+    closeTimers.set(room.id, timer);
+  };
+
   const handleClose = (ws: WebSocket) => {
     const conn = connections.get(ws);
     if (!conn) return;
@@ -126,32 +148,14 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     clearTimeout(conn.pongTimer);
 
     const { room, userId } = conn;
-    room.remove(userId);
     roomSockets.get(room.id)?.delete(userId);
-    if (room.size === 0) {
-      rooms.delete(room.id);
-      roomSockets.delete(room.id);
-      keepAwake.roomClosed(room.id);
-    } else {
-      broadcast(room);
-    }
+    room.markAway(userId);
+    if (room.connectedCount === 0) scheduleClose(room);
+    else broadcast(room);
     if (connections.size === 0) onAllClosed?.();
   };
 
-  const handleConnection = (ws: WebSocket, params: ConnectParams) => {
-    let room = rooms.get(params.room);
-    if (room && room.size >= config.maxRoomUsers) {
-      ws.close(1008, 'room_full');
-      return;
-    }
-    if (!room) {
-      room = new Room(params.room, params.deck);
-      rooms.set(room.id, room);
-      roomSockets.set(room.id, new Map());
-      keepAwake.roomCreated(room.id);
-    }
-
-    const member = room.add(params.name, params.avatar, params.spectating);
+  const attach = (ws: WebSocket, room: Room, member: Member) => {
     roomSockets.get(room.id)?.set(member.id, ws);
     connections.set(ws, { room, userId: member.id, windowStart: Date.now(), messageCount: 0 });
 
@@ -166,8 +170,48 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     ws.on('close', () => handleClose(ws));
     ws.on('error', () => ws.terminate());
 
-    send(ws, { type: 'welcome', userId: member.id });
+    send(ws, { type: 'welcome', userId: member.id, token: member.token });
     broadcast(room);
+  };
+
+  const handleRejoin = (ws: WebSocket, roomId: string, token: string) => {
+    const room = rooms.get(roomId);
+    const member = room?.findByToken(token);
+    if (!room || !member) {
+      ws.on('error', () => ws.terminate());
+      ws.close(4001, 'session_expired');
+      return;
+    }
+
+    const previous = roomSockets.get(room.id)?.get(member.id);
+    if (previous) {
+      // Detach first so its close handler doesn't mark the member away.
+      clearTimeout(connections.get(previous)?.pongTimer);
+      connections.delete(previous);
+      previous.close(4002, 'replaced');
+    }
+    room.rejoin(member);
+    cancelClose(room.id);
+    attach(ws, room, member);
+  };
+
+  const handleConnection = (ws: WebSocket, params: ConnectParams) => {
+    if (params.token !== undefined) return handleRejoin(ws, params.room, params.token);
+
+    let room = rooms.get(params.room);
+    if (room && room.size >= config.maxRoomUsers) {
+      ws.close(1008, 'room_full');
+      return;
+    }
+    if (!room) {
+      room = new Room(params.room, params.deck);
+      rooms.set(room.id, room);
+      roomSockets.set(room.id, new Map());
+      keepAwake.roomCreated(room.id);
+    }
+
+    cancelClose(room.id);
+    attach(ws, room, room.add(params.name, params.avatar, params.spectating));
   };
 
   const applyCors = (req: IncomingMessage, res: ServerResponse) => {
@@ -228,7 +272,9 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     const params = parseConnectParams(url.searchParams);
     if (!params) return rejectUpgrade(socket, 400, 'Bad Request');
     const existing = rooms.get(params.room);
-    if (existing && existing.size >= config.maxRoomUsers) return rejectUpgrade(socket, 403, 'Forbidden');
+    if (!params.token && existing && existing.size >= config.maxRoomUsers) {
+      return rejectUpgrade(socket, 403, 'Forbidden');
+    }
 
     wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, params));
   });
@@ -243,10 +289,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       ws.ping();
     }
     for (const [id, room] of rooms) {
-      if (room.size === 0) {
-        rooms.delete(id);
-        roomSockets.delete(id);
-      }
+      if (room.connectedCount === 0 && !closeTimers.has(id)) closeRoom(id);
     }
   }, config.heartbeatIntervalMs);
   heartbeat.unref();
@@ -275,6 +318,8 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       });
 
       for (const ws of connections.keys()) ws.terminate();
+      for (const timer of closeTimers.values()) clearTimeout(timer);
+      closeTimers.clear();
       wss.close();
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));

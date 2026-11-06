@@ -30,7 +30,7 @@ describe('create and join handshake', () => {
       roomClosed: vi.fn(),
       shutdown: vi.fn(),
     };
-    app = createAppServer({ ...loadConfig({}), shutdownGraceMs: 500 }, keepAwake);
+    app = createAppServer({ ...loadConfig({}), shutdownGraceMs: 500, roomCloseGraceMs: 0 }, keepAwake);
     port = await app.listen(0);
 
     const alice = await connect(port, { room: ROOM, name: 'Alice' });
@@ -56,7 +56,11 @@ describe('create and join handshake', () => {
     const alice = await connect(port, { room: ROOM, name: 'Alice', avatar: 'capybara', deck: 'fibonacci' });
 
     const [first, second] = [await alice.next(), await alice.next()];
-    expect(first).toEqual({ type: 'welcome', userId: expect.stringMatching(/^user-/) });
+    expect(first).toEqual({
+      type: 'welcome',
+      userId: expect.stringMatching(/^user-/),
+      token: expect.stringMatching(/^[A-Za-z0-9_-]{32}$/),
+    });
     expect(second).toEqual({
       type: 'state',
       hostId: first.userId,
@@ -65,7 +69,7 @@ describe('create and join handshake', () => {
       tickets: [],
       activeTicketId: null,
       round: 0,
-      users: [{ id: first.userId, name: 'Alice', avatar: 'capybara', hasVoted: false, spectating: false }],
+      users: [{ id: first.userId, name: 'Alice', avatar: 'capybara', hasVoted: false, spectating: false, away: false }],
       votes: null,
       myVote: null,
     });
@@ -83,8 +87,8 @@ describe('create and join handshake', () => {
     const expected = {
       hostId: aliceId,
       users: [
-        { id: aliceId, name: 'Alice', avatar: 'cat', hasVoted: false, spectating: false },
-        { id: bobId, name: 'Bob', avatar: 'dog', hasVoted: false, spectating: false },
+        { id: aliceId, name: 'Alice', avatar: 'cat', hasVoted: false, spectating: false, away: false },
+        { id: bobId, name: 'Bob', avatar: 'dog', hasVoted: false, spectating: false, away: false },
       ],
     };
     const [aliceView, bobView] = [await alice.next('state'), await bob.next('state')];
@@ -113,7 +117,13 @@ describe('create and join handshake', () => {
     await start();
     const client = await connect(port, { room: ROOM, name: '  Dana  ', avatar: '  ' });
     const state = await client.next('state');
-    expect(state.users[0]).toEqual({ id: expect.any(String), name: 'Dana', hasVoted: false, spectating: false });
+    expect(state.users[0]).toEqual({
+      id: expect.any(String),
+      name: 'Dana',
+      hasVoted: false,
+      spectating: false,
+      away: false,
+    });
   });
 
   it('joins as a spectator with spectating=1', async () => {
@@ -132,6 +142,7 @@ describe('create and join handshake', () => {
     ['deck over 32 chars', { room: ROOM, name: 'Alice', deck: 'd'.repeat(33) }],
     ['avatar over 32 chars', { room: ROOM, name: 'Alice', avatar: 'a'.repeat(33) }],
     ['invalid spectating', { room: ROOM, name: 'Alice', spectating: 'true' }],
+    ['malformed token', { room: ROOM, token: 'short' }],
   ])('rejects the upgrade with 400 for %s', async (_label, params) => {
     await start();
     expect(await rejectedStatus(port, params as Record<string, string>)).toBe(400);
@@ -152,18 +163,27 @@ describe('room capacity', () => {
     expect(await rejectedStatus(port, { room: ROOM, name: 'C' })).toBe(403);
   });
 
-  it('frees a place when someone leaves', async () => {
-    await start({ maxRoomUsers: 1 });
+  it('keeps a place for away members until the room closes', async () => {
+    await start({ maxRoomUsers: 2, roomCloseGraceMs: 0 });
     const a = await connect(port, { room: ROOM, name: 'A' });
     await a.next('state');
-    await a.close();
     const b = await connect(port, { room: ROOM, name: 'B' });
-    expect((await b.next('state')).users).toHaveLength(1);
+    await b.next('state');
+    await a.next('state');
+    await b.close();
+    await a.next('state');
+    expect(await (await roomStatus(ROOM)).json()).toMatchObject({ userCount: 2, full: true });
+    expect(await rejectedStatus(port, { room: ROOM, name: 'C' })).toBe(403);
+
+    await a.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const c = await connect(port, { room: ROOM, name: 'C' });
+    expect((await c.next('state')).users).toHaveLength(1);
   });
 });
 
 describe('leaving and host promotion', () => {
-  it('promotes the oldest remaining user when the host leaves', async () => {
+  it('promotes the oldest connected user when the host leaves and marks the host away', async () => {
     await start();
     const alice = await connect(port, { room: ROOM, name: 'Alice' });
     await alice.next('state');
@@ -176,19 +196,25 @@ describe('leaving and host promotion', () => {
     await alice.close();
     const state = await carol.next('state');
     expect(state.hostId).toBe(bobId);
-    expect(state.users.map((u: Message) => u.name)).toEqual(['Bob', 'Carol']);
+    expect(state.users.map((u: Message) => [u.name, u.away])).toEqual([
+      ['Alice', true],
+      ['Bob', false],
+      ['Carol', false],
+    ]);
   });
 
-  it('discards the room when the last user leaves', async () => {
-    await start();
+  it('discards the room once nobody has been connected for the grace period', async () => {
+    await start({ roomCloseGraceMs: 100 });
     const alice = await connect(port, { room: ROOM, name: 'Alice' });
     await alice.next('state');
     await alice.close();
     await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await (await roomStatus(ROOM)).json()).toMatchObject({ exists: true, userCount: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 150));
     expect(await (await roomStatus(ROOM)).json()).toMatchObject({ exists: false, userCount: 0 });
   });
 
-  it('treats a reconnect as a new user who does not regain host', async () => {
+  it('treats a reconnect without a token as a new user who does not regain host', async () => {
     await start();
     const alice = await connect(port, { room: ROOM, name: 'Alice' });
     const { userId: oldId } = await alice.next('welcome');
@@ -203,7 +229,132 @@ describe('leaving and host promotion', () => {
     const state = await again.next('state');
     expect(newId).not.toBe(oldId);
     expect(state.hostId).toBe(bobId);
-    expect(state.users.map((u: Message) => u.id)).toEqual([bobId, newId]);
+    expect(state.users.map((u: Message) => u.id)).toEqual([oldId, bobId, newId]);
+  });
+});
+
+describe('rejoining with a token', () => {
+  const closeOf = async (client: TestClient) => {
+    const [code, reason] = await once(client.ws, 'close');
+    return [code, reason.toString()];
+  };
+
+  async function hostAndGuest(overrides: Partial<Config> = {}) {
+    await start(overrides);
+    const host = await connect(port, { room: ROOM, name: 'Host', avatar: 'capybara' });
+    const hostWelcome = await host.next('welcome');
+    const guest = await connect(port, { room: ROOM, name: 'Guest', avatar: 'penguin', spectating: '1' });
+    const guestWelcome = await guest.next('welcome');
+    await host.settledState();
+    await guest.settledState();
+    return { host, guest, hostWelcome, guestWelcome };
+  }
+
+  it('restores the same identity, avatar, spectating choice and vote', async () => {
+    const { host, guest, guestWelcome } = await hostAndGuest();
+    await guest.close();
+    const away = await host.next('state');
+    expect(away.users[1]).toMatchObject({ id: guestWelcome.userId, away: true, spectating: true });
+
+    const back = await connect(port, { room: ROOM, token: guestWelcome.token });
+    expect(await back.next('welcome')).toEqual(guestWelcome);
+    const state = await back.next('state');
+    expect(state.users[1]).toEqual({
+      id: guestWelcome.userId,
+      name: 'Guest',
+      avatar: 'penguin',
+      hasVoted: false,
+      spectating: true,
+      away: false,
+    });
+    expect((await host.next('state')).users[1].away).toBe(false);
+  });
+
+  it('keeps an away member\'s vote and reports them as voted', async () => {
+    const { host } = await hostAndGuest();
+    const voter = await connect(port, { room: ROOM, name: 'Voter' });
+    const voterWelcome = await voter.next('welcome');
+    await voter.settledState();
+    await host.settledState();
+    voter.send(vote('8'));
+    await voter.next('state');
+    await host.next('state');
+
+    await voter.close();
+    const away = await host.next('state');
+    expect(away.users[2]).toMatchObject({ away: true, hasVoted: true });
+
+    const back = await connect(port, { room: ROOM, token: voterWelcome.token });
+    await back.next('welcome');
+    expect((await back.next('state')).myVote).toBe('8');
+    await host.next('state');
+
+    host.send({ type: 'reveal' });
+    expect((await host.next('state')).votes).toEqual({ [voterWelcome.userId]: '8' });
+  });
+
+  it('gives the facilitator role back to the original host on rejoin', async () => {
+    const { host, guest, hostWelcome, guestWelcome } = await hostAndGuest();
+    await host.close();
+    expect((await guest.next('state')).hostId).toBe(guestWelcome.userId);
+
+    const back = await connect(port, { room: ROOM, token: hostWelcome.token });
+    await back.next('welcome');
+    expect((await back.next('state')).hostId).toBe(hostWelcome.userId);
+    expect((await guest.next('state')).hostId).toBe(hostWelcome.userId);
+  });
+
+  it('lets an away member rejoin a full room', async () => {
+    const { host, guest, guestWelcome } = await hostAndGuest({ maxRoomUsers: 2 });
+    await guest.close();
+    await host.next('state');
+    const back = await connect(port, { room: ROOM, token: guestWelcome.token });
+    expect((await back.next('welcome')).userId).toBe(guestWelcome.userId);
+  });
+
+  it('keeps the room open while the last member refreshes within the grace period', async () => {
+    await start({ roomCloseGraceMs: 200 });
+    const alice = await connect(port, { room: ROOM, name: 'Alice' });
+    const welcome = await alice.next('welcome');
+    await alice.close();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const back = await connect(port, { room: ROOM, token: welcome.token });
+    await back.next('welcome');
+    expect((await back.next('state')).hostId).toBe(welcome.userId);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(await (await roomStatus(ROOM)).json()).toMatchObject({ exists: true });
+  });
+
+  it('closes with 4001 once the room has closed, without creating a room', async () => {
+    await start({ roomCloseGraceMs: 0 });
+    const alice = await connect(port, { room: ROOM, name: 'Alice' });
+    const welcome = await alice.next('welcome');
+    await alice.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const back = await connect(port, { room: ROOM, token: welcome.token });
+    expect(await closeOf(back)).toEqual([4001, 'session_expired']);
+    expect(await (await roomStatus(ROOM)).json()).toMatchObject({ exists: false });
+  });
+
+  it('closes with 4001 for a token from a different room', async () => {
+    const { hostWelcome } = await hostAndGuest();
+    const other = await connect(port, { room: 'abcd-efgh', name: 'Other' });
+    await other.next('state');
+    const wrong = await connect(port, { room: 'abcd-efgh', token: hostWelcome.token });
+    expect(await closeOf(wrong)).toEqual([4001, 'session_expired']);
+  });
+
+  it('replaces an open connection for the same member with 4002', async () => {
+    const { host, guest, guestWelcome } = await hostAndGuest();
+    const closed = closeOf(guest);
+    const second = await connect(port, { room: ROOM, token: guestWelcome.token });
+    expect(await closed).toEqual([4002, 'replaced']);
+    await second.next('welcome');
+    const state = await second.next('state');
+    expect(state.users.map((u: Message) => u.away)).toEqual([false, false]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(host.messages.every((m: Message) => m.users.every((u: Message) => !u.away))).toBe(true);
   });
 });
 
@@ -323,7 +474,7 @@ describe('voting, reveal and reset', () => {
     expect((await guest.next('state')).myVote).toBe('8');
   });
 
-  it('removes a disconnected voter from the vote map', async () => {
+  it('keeps a disconnected voter\'s vote and marks them away', async () => {
     const { host, guest, guestId } = await twoUsers();
     guest.send(vote('3'));
     await host.next('state');
@@ -331,8 +482,8 @@ describe('voting, reveal and reset', () => {
     await host.next('state');
     host.send({ type: 'reveal' });
     const state = await host.next('state');
-    expect(state.votes).toEqual({});
-    expect(state.users.map((u: Message) => u.id)).not.toContain(guestId);
+    expect(state.votes).toEqual({ [guestId]: '3' });
+    expect(state.users.find((u: Message) => u.id === guestId).away).toBe(true);
   });
 
   it('rejects bad messages without broadcasting state', async () => {
@@ -580,7 +731,7 @@ describe('ticket list', () => {
     const removed = await act(host, [guest], { type: 'removeTicket', ticketId: first });
     expect(removed.round).toBe(initial + 3);
   });
-  it('keeps a revealed result per ticket across switching, reset and participants leaving', async () => {
+  it('keeps a revealed result per ticket across switching, reset and participants going away', async () => {
     const { host, guest, hostId, guestId } = await twoUsers();
     const [first, second] = await addTickets(host, guest, 'One', 'Two');
     await act(host, [guest], { type: 'selectTicket', ticketId: first });
@@ -606,7 +757,13 @@ describe('ticket list', () => {
     await act(host, [], { type: 'selectTicket', ticketId: first });
     await act(host, [], vote('3', round));
     const overwritten = await act(host, [], { type: 'reveal' });
-    expect(overwritten.tickets[0].result).toEqual({ users: [{ id: hostId, name: 'Host' }], votes: { [hostId]: '3' } });
+    expect(overwritten.tickets[0].result).toEqual({
+      users: [
+        { id: hostId, name: 'Host' },
+        { id: guestId, name: 'Guest', avatar: 'penguin' },
+      ],
+      votes: { [hostId]: '3' },
+    });
   });
 
   it('stores no result when revealing with no active ticket', async () => {
