@@ -178,6 +178,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     const room = rooms.get(roomId);
     const member = room?.findByToken(token);
     if (!room || !member) {
+      ws.on('error', () => ws.terminate());
       ws.close(4001, 'session_expired');
       return;
     }
