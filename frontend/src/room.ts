@@ -39,7 +39,11 @@ export function isCreator(roomId: string): boolean {
 const sessionKey = (roomId: string) => `ppk:session:${roomId}`;
 
 export function saveSession(roomId: string, token: string): void {
-  localStorage.setItem(sessionKey(roomId), token);
+  try {
+    localStorage.setItem(sessionKey(roomId), token);
+  } catch {
+    // A storage failure must not prevent the live session from joining.
+  }
 }
 
 export function loadSession(roomId: string): string | null {
