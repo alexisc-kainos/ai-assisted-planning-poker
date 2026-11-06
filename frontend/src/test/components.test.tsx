@@ -70,6 +70,61 @@ describe('JoinForm', () => {
     setup();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  describe('names already in the room', () => {
+    const members = [
+      { name: 'Alice', away: false },
+      { name: 'Bob', away: true },
+    ];
+
+    const setupWithMembers = () => {
+      const onJoin = vi.fn();
+      const onTakeover = vi.fn();
+      render(<JoinForm onJoin={onJoin} onTakeover={onTakeover} members={members} />);
+      return {
+        onJoin,
+        onTakeover,
+        user: userEvent.setup(),
+        name: screen.getByLabelText('Your name'),
+        join: screen.getByRole('button', { name: 'Join room' }),
+      };
+    };
+
+    it.each(['Alice', '  aLICE '])('blocks %j, which belongs to a connected member', async (typed) => {
+      const { user, name, join } = setupWithMembers();
+      await user.click(screen.getByRole('radio', { name: 'Cat' }));
+      await user.type(name, typed);
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Someone in this room is already called Alice. Please choose a different name.',
+      );
+      expect(name).toHaveAttribute('aria-invalid', 'true');
+      expect(join).toBeDisabled();
+
+      await user.clear(name);
+      await user.type(name, 'Alicia');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(join).toBeEnabled();
+    });
+
+    it('offers to rejoin as an away member without needing an avatar', async () => {
+      const { user, name, join, onJoin, onTakeover } = setupWithMembers();
+      await user.type(name, ' bob');
+      expect(screen.getByRole('status')).toHaveTextContent('Bob is away in this room. Is that you?');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('radio', { name: 'Dog' }));
+      expect(join).toBeDisabled();
+
+      await user.click(screen.getByRole('button', { name: 'Rejoin as Bob' }));
+      expect(onTakeover).toHaveBeenCalledWith('Bob');
+      expect(onJoin).not.toHaveBeenCalled();
+    });
+
+    it('does not treat inner spaces as the same name', async () => {
+      const { user, name } = setupWithMembers();
+      await user.type(name, 'Al ice');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
 });
 
 describe('Roster', () => {

@@ -55,9 +55,15 @@ export type ClientMessage =
   | { type: 'selectTicket'; ticketId: string }
   | { type: 'setSpectating'; spectating: boolean };
 
+export interface RoomMemberName {
+  name: string;
+  away: boolean;
+}
+
 export interface RoomStatus {
   exists: boolean;
   userCount: number;
   capacity: number;
   full: boolean;
+  members?: RoomMemberName[];
 }

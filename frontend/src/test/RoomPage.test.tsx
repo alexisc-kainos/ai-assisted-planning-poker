@@ -131,7 +131,93 @@ describe('RoomPage', () => {
 
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     FakeWebSocket.instances[0].serverClose(1006);
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't join — the room may be full or unavailable.");
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't join — the room may be full or unavailable.");
+  });
+
+  describe('names already in the room', () => {
+    const status = (members: Array<{ name: string; away: boolean }>) => ({
+      ok: true,
+      json: async () => ({ exists: true, userCount: members.length, capacity: 50, full: false, members }),
+    });
+    const takenMessage = 'Someone in this room is already called Alice. Please choose a different name.';
+
+    it('checks the name against the room as the person types', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(status([{ name: 'Alice', away: false }])));
+      render(<RoomPage roomId={ROOM} />);
+      const user = userEvent.setup();
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      await user.click(screen.getByRole('radio', { name: 'Cat' }));
+      await user.type(screen.getByLabelText('Your name'), 'alice ');
+
+      expect(screen.getByRole('alert')).toHaveTextContent(takenMessage);
+      expect(screen.getByRole('button', { name: 'Join room' })).toBeDisabled();
+    });
+
+    it('rejects a name taken after the form loaded when Join is pressed', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(status([]))
+        .mockResolvedValue(status([{ name: 'Alice', away: false }]));
+      vi.stubGlobal('fetch', fetchMock);
+      render(<RoomPage roomId={ROOM} />);
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await fillAndJoin('Alice');
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(takenMessage);
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      expect(screen.getByRole('button', { name: 'Join room' })).toBeDisabled();
+    });
+
+    it('explains a refused connection when the name was taken in the meantime', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(status([]))
+        .mockResolvedValueOnce(status([]))
+        .mockResolvedValue(status([{ name: 'Alice', away: false }]));
+      vi.stubGlobal('fetch', fetchMock);
+      render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin('Alice');
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      FakeWebSocket.instances[0].serverClose(1006);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(takenMessage);
+      expect(screen.queryByText(/Couldn't join/)).not.toBeInTheDocument();
+    });
+
+    it('rejoins as an away member with takeover and no avatar', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(status([{ name: 'Alice', away: true }])));
+      render(<RoomPage roomId={ROOM} />);
+      const user = userEvent.setup();
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      await user.type(screen.getByLabelText('Your name'), 'ALICE');
+      expect(screen.getByRole('status')).toHaveTextContent('Alice is away in this room. Is that you?');
+      await user.click(screen.getByRole('button', { name: 'Rejoin as Alice' }));
+
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(Object.fromEntries(new URL(FakeWebSocket.instances[0].url).searchParams)).toEqual({
+        room: ROOM,
+        name: 'Alice',
+        takeover: '1',
+      });
+      FakeWebSocket.instances[0].emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      expect(localStorage.getItem(`ppk:session:${ROOM}`)).toBe(TOKEN);
+    });
+
+    it('shows the taken message if the away member came back before the takeover', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(status([{ name: 'Alice', away: true }]))
+        .mockResolvedValue(status([{ name: 'Alice', away: false }]));
+      vi.stubGlobal('fetch', fetchMock);
+      render(<RoomPage roomId={ROOM} />);
+      const user = userEvent.setup();
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      await user.type(screen.getByLabelText('Your name'), 'Alice');
+      await user.click(screen.getByRole('button', { name: 'Rejoin as Alice' }));
+      FakeWebSocket.instances[0].serverClose(1006);
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(takenMessage);
+    });
   });
 
   it('shows an error when the server cannot be reached', async () => {

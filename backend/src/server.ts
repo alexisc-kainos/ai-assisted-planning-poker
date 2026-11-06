@@ -195,12 +195,29 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     attach(ws, room, member);
   };
 
+  const handleTakeover = (ws: WebSocket, roomId: string, name: string) => {
+    const room = rooms.get(roomId);
+    const member = room?.findByName(name);
+    if (!room || !member || member.connected) {
+      ws.close(1008, 'name_taken');
+      return;
+    }
+    room.takeOver(member);
+    cancelClose(room.id);
+    attach(ws, room, member);
+  };
+
   const handleConnection = (ws: WebSocket, params: ConnectParams) => {
     if (params.token !== undefined) return handleRejoin(ws, params.room, params.token);
+    if (params.takeover) return handleTakeover(ws, params.room, params.name);
 
     let room = rooms.get(params.room);
     if (room && room.size >= config.maxRoomUsers) {
       ws.close(1008, 'room_full');
+      return;
+    }
+    if (room?.findByName(params.name)) {
+      ws.close(1008, 'name_taken');
       return;
     }
     if (!room) {
@@ -240,12 +257,14 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     }
     if (!isValidRoomId(roomId)) return sendJson(res, 400, { error: 'Invalid room id' });
 
-    const userCount = rooms.get(roomId)?.size ?? 0;
+    const room = rooms.get(roomId);
+    const userCount = room?.size ?? 0;
     sendJson(res, 200, {
-      exists: rooms.has(roomId),
+      exists: room !== undefined,
       userCount,
       capacity: config.maxRoomUsers,
       full: userCount >= config.maxRoomUsers,
+      members: room?.memberNames() ?? [],
     });
   };
 
@@ -272,8 +291,14 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     const params = parseConnectParams(url.searchParams);
     if (!params) return rejectUpgrade(socket, 400, 'Bad Request');
     const existing = rooms.get(params.room);
-    if (!params.token && existing && existing.size >= config.maxRoomUsers) {
-      return rejectUpgrade(socket, 403, 'Forbidden');
+    if (params.token === undefined) {
+      const holder = existing?.findByName(params.name);
+      if (params.takeover) {
+        if (!holder || holder.connected) return rejectUpgrade(socket, 409, 'Conflict');
+      } else {
+        if (existing && existing.size >= config.maxRoomUsers) return rejectUpgrade(socket, 403, 'Forbidden');
+        if (holder) return rejectUpgrade(socket, 409, 'Conflict');
+      }
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, params));

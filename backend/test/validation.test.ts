@@ -67,6 +67,19 @@ describe('parseConnectParams', () => {
     expect(parse({ room: 'abcd', name: 'Bob', spectating })).toBeNull();
   });
 
+  it('reads takeover=1 and omits it when absent', () => {
+    expect(parse({ room: 'abcd', name: ' Bob ', takeover: '1' })).toMatchObject({ name: 'Bob', takeover: true });
+    expect(parse({ room: 'abcd', name: 'Bob' })).not.toHaveProperty('takeover');
+  });
+
+  it.each(['0', 'true', ''])('rejects takeover=%j', (takeover) => {
+    expect(parse({ room: 'abcd', name: 'Bob', takeover })).toBeNull();
+  });
+
+  it('requires a name for takeover', () => {
+    expect(parse({ room: 'abcd', takeover: '1' })).toBeNull();
+  });
+
   it('accepts a reconnect token without a name and ignores other params', () => {
     const token = 'Ab9_-'.repeat(6) + 'xy';
     expect(parse({ room: 'abcd', token })).toEqual({ room: 'abcd', token });
