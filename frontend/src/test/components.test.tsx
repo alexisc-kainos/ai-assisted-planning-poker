@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CurrentTicket } from '../CurrentTicket';
 import { JoinForm } from '../JoinForm';
 import { Roster } from '../Roster';
-import { TicketPanel } from '../TicketPanel';
+import { AddTicketForm, TicketPanel } from '../TicketPanel';
 import type { RoomTicket } from '../types';
 import { VoteDeck } from '../VoteDeck';
 import { VoteResults } from '../VoteResults';
@@ -266,9 +266,16 @@ describe('TicketPanel', () => {
 
   const renderPanel = (props: Partial<Parameters<typeof TicketPanel>[0]> = {}) => {
     const handlers = { onAdd: vi.fn(), onEdit: vi.fn(), onRemove: vi.fn(), onSelect: vi.fn() };
-    const panel = (next: Partial<Parameters<typeof TicketPanel>[0]>) => (
-      <TicketPanel tickets={[]} activeTicketId={null} isHost {...handlers} {...next} />
-    );
+    const { onAdd, ...itemHandlers } = handlers;
+    const panel = (next: Partial<Parameters<typeof TicketPanel>[0]>) => {
+      const tickets = next.tickets ?? [];
+      return (
+        <>
+          {next.isHost !== false && <AddTicketForm tickets={tickets} onAdd={onAdd} />}
+          <TicketPanel activeTicketId={null} isHost {...itemHandlers} {...next} tickets={tickets} />
+        </>
+      );
+    };
     const { rerender } = render(panel(props));
     return { ...handlers, update: (next: Partial<Parameters<typeof TicketPanel>[0]>) => rerender(panel(next)) };
   };
@@ -276,7 +283,7 @@ describe('TicketPanel', () => {
   it('lets the host add a story ticket by default', async () => {
     const { onAdd } = renderPanel();
     expect(screen.getByRole('heading', { name: 'Tickets' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Add Tickets', level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Add tickets', level: 2 })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Story' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Spike' })).toBeEnabled();
 

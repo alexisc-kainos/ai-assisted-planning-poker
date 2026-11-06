@@ -76,7 +76,10 @@ export function useRoom(roomId: string) {
       } else {
         params.set('name', credentials.name);
         params.set('avatar', credentials.avatar);
-        if (isCreator(roomId)) params.set('deck', DEFAULT_DECK);
+        if (isCreator(roomId)) {
+          params.set('deck', DEFAULT_DECK);
+          params.set('spectating', '1');
+        }
       }
 
       const ws = new WebSocket(`${WS_URL}/ws?${params}`);

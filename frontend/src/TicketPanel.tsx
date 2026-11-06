@@ -9,7 +9,6 @@ interface TicketPanelProps {
   tickets: RoomTicket[];
   activeTicketId: string | null;
   isHost: boolean;
-  onAdd: (fields: TicketFields, type: TicketType) => void;
   onEdit: (ticketId: string, fields: TicketFields, type: TicketType) => void;
   onRemove: (ticketId: string) => void;
   onSelect: (ticketId: string) => void;
@@ -112,7 +111,12 @@ function TicketFieldsForm({ labels, submitLabel, initial, disabled, onSubmit, ch
 const sameFields = (ticket: TicketFields, fields: TicketFields) =>
   ticket.title === fields.title && ticket.description === fields.description;
 
-function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: TicketPanelProps['onAdd'] }) {
+interface AddTicketFormProps {
+  tickets: RoomTicket[];
+  onAdd: (fields: TicketFields, type: TicketType) => void;
+}
+
+export function AddTicketForm({ tickets, onAdd }: AddTicketFormProps) {
   const [type, setType] = useState<TicketType>('story');
   const [pending, setPending] = useState<{ fields: TicketFields; knownIds: Set<string> } | null>(null);
   const [formKey, setFormKey] = useState(0);
@@ -133,8 +137,8 @@ function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: Ticke
   };
 
   return (
-    <div className="ticket-add">
-      <h2>Add Tickets</h2>
+    <section className="card add-tickets" aria-labelledby="add-tickets-heading">
+      <h2 id="add-tickets-heading">Add tickets</h2>
       <TicketTypeOptions value={type} onChange={setType} />
       <TicketFieldsForm
         key={formKey}
@@ -148,11 +152,11 @@ function AddTicketForm({ tickets, onAdd }: { tickets: RoomTicket[]; onAdd: Ticke
           You've reached the limit of {MAX_TICKETS} tickets. Remove one to add another.
         </p>
       )}
-    </div>
+    </section>
   );
 }
 
-interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTicketId' | 'onAdd'> {
+interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTicketId'> {
   ticket: RoomTicket;
   active: boolean;
 }
@@ -264,7 +268,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
   );
 }
 
-export function TicketPanel({ tickets, activeTicketId, isHost, onAdd, ...itemProps }: TicketPanelProps) {
+export function TicketPanel({ tickets, activeTicketId, isHost, ...itemProps }: TicketPanelProps) {
   return (
     <section className="card tickets-card" aria-labelledby="ticket-heading">
       <h2 id="ticket-heading">Tickets</h2>
@@ -281,7 +285,6 @@ export function TicketPanel({ tickets, activeTicketId, isHost, onAdd, ...itemPro
           ))}
         </ol>
       )}
-      {isHost && <AddTicketForm tickets={tickets} onAdd={onAdd} />}
     </section>
   );
 }
