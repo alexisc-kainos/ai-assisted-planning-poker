@@ -30,7 +30,7 @@ inputs:
 | 2 | Review final diff and request separate L2 approval before any commit | Developer/user | FR1–FR7 | Yes | Safety gate |
 
 **Scope:** PPK-39 — keep the app awake for 90 minutes after a room is created.
-**Branch / revision:** `feature/ppk-39-keep-awake` at `d89206f0ae04b6b826c429342e8bdee2675d94e6`, based on `origin/main`.
+**Branch / revision:** `feature/ppk-39-keep-awake` at `cd790d0894b03ee51977b6d653c91eb843bd05de`, based on `origin/main`.
 **Workflow:** Implementation complete; local QA complete; Render validation blocked.
 **Updated:** 2026-11-06
 
@@ -84,4 +84,5 @@ inputs:
 | Focused local checks | Run focused tests, typecheck and build | `npm test -w backend -- test/keepAwake.test.ts test/config.test.ts test/server.test.ts` (100 passed); `npm run typecheck -w backend`; `npm run build -w backend` | User approved test plan, 2026-11-06 | PASS on Node v22.22.1 / macOS; 2026-11-06T08:57Z |
 | L3 | Full backend test suite | `npm test -w backend` on local macOS / Node v22.22.1; loopback test servers only; no external service or persistent data | User, 2026-11-06 | Approved and PASS; 4 files / 188 tests at 2026-11-06T08:59Z |
 | L3 | Render lifecycle validation | Deployed service, room window and Render dashboard/access; allow at least 90 minutes plus idle threshold | Pending access and exact environment approval | BLOCKED; not run |
-| L4 | Push / PR / external writes | Not requested or approved | Pending | Not performed |
+| L4 | Push branch | Push `feature/ppk-39-keep-awake` / `cd790d0894b03ee51977b6d653c91eb843bd05de` to `origin` | User approved exact branch and commit, 2026-11-06 | PASS; remote ref verified with `git ls-remote` |
+| L4 | PR / merge / deployment | No PR or merge requested/performed; deployment follows merge per user | Not approved | Not performed |
