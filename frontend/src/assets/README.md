@@ -58,3 +58,30 @@ rows). Accessible names remain on each radio option.
 Unknown/absent IDs keep the existing placeholder.
 The backend already accepts open-string avatar IDs, so no protocol change is
 needed.
+
+## Favicon
+
+`frontend/public/` holds the browser and home-screen icons, linked from
+`frontend/index.html` with root paths that Vite prefixes with the base path at
+build time. The capybara's head is cut out of the avatar by flood-filling the
+light background to transparent. The 16 × 16 and 32 × 32 icons keep the
+transparency; the 180 × 180 apple-touch icon sits on the app's `--bg` cream
+because iOS fills transparent areas with black. From `frontend/`, with
+ImageMagick:
+
+```sh
+magick src/assets/avatars/capybara.jpg -alpha set -fuzz 20% -fill none \
+  -draw 'color 0,0 floodfill' -draw 'color 255,0 floodfill' \
+  -draw 'color 0,255 floodfill' -draw 'color 255,255 floodfill' \
+  -draw 'color 128,8 floodfill' -draw 'color 15,128 floodfill' \
+  -draw 'color 240,128 floodfill' \
+  -channel A -morphology Open Disk:1.5 -morphology Erode Disk:1 +channel \
+  -trim +repage /tmp/capybara-head.png
+H=/tmp/capybara-head.png
+magick $H -background none -gravity center -extent 209x209 -resize 32x32 PNG32:public/favicon-32x32.png
+magick $H -background none -gravity center -extent 209x209 -resize 16x16 PNG32:public/favicon-16x16.png
+magick $H -resize 148x148 -background '#f4efe6' -gravity center -extent 180x180 \
+  -alpha remove -alpha off public/apple-touch-icon.png
+# Force 32-bit entries: a paletted 16px entry gets 1-bit alpha, which Edge renders jagged.
+magick public/favicon-16x16.png public/favicon-32x32.png -type TrueColorAlpha public/favicon.ico
+```
