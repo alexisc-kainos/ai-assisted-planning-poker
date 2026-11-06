@@ -32,7 +32,7 @@ Each WebSocket connection is treated as a fresh session — there is no reconnec
 
 ### `GET /health`
 
-Returns `200 OK` with body `ok`. Stateless. Used by load balancers and for keep-warm pings to prevent the hosting provider from spinning the service down during a workshop.
+Returns `200 OK` with body `ok`. Stateless. Used by load balancers and, on Render, for keep-warm pings while at least one room is inside its configured keep-awake window. The backend requests its public `/health` URL every 10 minutes when `RENDER_EXTERNAL_URL` is available. The default room window is 90 minutes from room creation; closing a room stops its window early, and membership or host changes do not reset it. The window is configurable with `ROOM_KEEP_AWAKE_DURATION_MS`. No keep-warm request is made when no room window is active or the public URL is unavailable.
 
 No CORS headers are sent; the route is intended for direct browser/probe access, not cross-origin fetch.
 

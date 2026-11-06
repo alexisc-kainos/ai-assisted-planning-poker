@@ -1,8 +1,9 @@
 import { once } from 'node:events';
 import { connect as connectTcp } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { Config } from '../src/config.js';
-import type { AppServer } from '../src/server.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loadConfig, type Config } from '../src/config.js';
+import type { KeepAwakeLifecycle } from '../src/keepAwake.js';
+import { createAppServer, type AppServer } from '../src/server.js';
 import { connect, rejectedStatus, startServer, type Message, type TestClient } from './helpers.js';
 
 let app: AppServer | undefined;
@@ -23,6 +24,33 @@ const roomStatus = async (id: string, headers: Record<string, string> = {}) =>
   fetch(`http://127.0.0.1:${port}/rooms/${id}`, { headers });
 
 describe('create and join handshake', () => {
+  it('starts tracking only when a room is created and stops when it closes', async () => {
+    const keepAwake: KeepAwakeLifecycle = {
+      roomCreated: vi.fn(),
+      roomClosed: vi.fn(),
+      shutdown: vi.fn(),
+    };
+    app = createAppServer({ ...loadConfig({}), shutdownGraceMs: 500 }, keepAwake);
+    port = await app.listen(0);
+
+    const alice = await connect(port, { room: ROOM, name: 'Alice' });
+    await alice.next('state');
+    const bob = await connect(port, { room: ROOM, name: 'Bob' });
+    await bob.next('state');
+    expect(keepAwake.roomCreated).toHaveBeenCalledTimes(1);
+    expect(keepAwake.roomCreated).toHaveBeenCalledWith(ROOM);
+
+    await alice.close();
+    await bob.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(keepAwake.roomClosed).toHaveBeenCalledTimes(1);
+    expect(keepAwake.roomClosed).toHaveBeenCalledWith(ROOM);
+
+    await app.shutdown();
+    expect(keepAwake.shutdown).toHaveBeenCalledOnce();
+    app = undefined;
+  });
+
   it('makes the first connection host and sends welcome before state', async () => {
     await start();
     const alice = await connect(port, { room: ROOM, name: 'Alice', avatar: 'capybara', deck: 'fibonacci' });
