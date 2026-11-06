@@ -1,6 +1,6 @@
 # ai-assisted-planning-poker
 
-An animal-themed planning poker app. A facilitator opens a room and shares the join link. Each teammate then joins with a name and a cartoon animal avatar.
+An animal-themed planning poker app. A facilitator opens a room and shares the join link. Each teammate then joins with a name and a cartoon animal avatar. The facilitator joins as a spectator by default and can switch to voting at any time.
 
 - `backend/`: Node.js + [`ws`](https://github.com/websockets/ws) server that implements [docs/api-contract.md](docs/api-contract.md). All state is held in memory.
 - `frontend/`: Vite + React single-page app.

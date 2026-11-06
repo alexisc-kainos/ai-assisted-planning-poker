@@ -3,7 +3,7 @@ import { CurrentTicket } from './CurrentTicket';
 import { JoinForm } from './JoinForm';
 import { Mascot } from './Mascot';
 import { Roster } from './Roster';
-import { TicketPanel } from './TicketPanel';
+import { AddTicketForm, TicketPanel } from './TicketPanel';
 import { VoteDeck } from './VoteDeck';
 import { VoteResults } from './VoteResults';
 import { joinUrl } from './room';
@@ -72,6 +72,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
             </p>
           )}
           <CurrentTicket tickets={state.tickets} activeTicketId={state.activeTicketId} isHost={isHost} />
+          {isHost && <AddTicketForm tickets={state.tickets} onAdd={addTicket} />}
           {state.revealed && (
             <VoteResults
               users={state.users.filter((user) => !user.spectating || votes[user.id] !== undefined)}
@@ -87,6 +88,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
               onVote={(value) => vote(value, state.round)}
             />
           )}
+        </div>
+        <aside className="room-side" aria-label="Room">
+          <CopyLink url={url} />
           {isHost && (
             <section className="card" aria-labelledby="voting-controls-heading">
               <h2 id="voting-controls-heading">Voting controls</h2>
@@ -96,10 +100,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
               </div>
             </section>
           )}
-        </div>
-        <aside className="room-side" aria-label="Room">
-          <CopyLink url={url} />
-          <section className="participation" aria-label="Participation">
+          <Roster users={state.users} hostId={state.hostId} meId={userId} />
+          <section className="card participation" aria-label="Participation">
             <label className="spectate-toggle">
               <input
                 type="checkbox"
@@ -111,14 +113,12 @@ export function RoomPage({ roomId }: { roomId: string }) {
             </label>
             {spectating && <p className="hint">You're spectating — switch off to vote.</p>}
           </section>
-          <Roster users={state.users} hostId={state.hostId} meId={userId} />
         </aside>
         <div className="room-tickets">
           <TicketPanel
             tickets={state.tickets}
             activeTicketId={state.activeTicketId}
             isHost={isHost}
-            onAdd={addTicket}
             onEdit={editTicket}
             onRemove={removeTicket}
             onSelect={selectTicket}
@@ -138,7 +138,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
         <h2 className="room-title">
           Room <code>{roomId}</code>
         </h2>
-        <section className="card">
+        <section className="card replaced">
           <p role="alert">This room was opened in another tab or window.</p>
           <button type="button" className="primary" onClick={resume}>
             Use this tab instead

@@ -114,14 +114,16 @@ describe('RoomPage', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('Bob (you)Host');
   });
 
-  it('sends the default deck only when this tab created the room', async () => {
+  it('sends the default deck and spectator mode only when this tab created the room', async () => {
     markCreator(ROOM);
     mockRoomStatus({ exists: false, userCount: 0, capacity: 50, full: false });
     render(<RoomPage roomId={ROOM} />);
     await fillAndJoin();
 
     await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
-    expect(new URL(FakeWebSocket.instances[0].url).searchParams.get('deck')).toBe('fibonacci');
+    const params = new URL(FakeWebSocket.instances[0].url).searchParams;
+    expect(params.get('deck')).toBe('fibonacci');
+    expect(params.get('spectating')).toBe('1');
   });
 
   it('shows a fallback message if the connection is refused before joining', async () => {
@@ -707,6 +709,73 @@ describe('RoomPage', () => {
       ws.emit(roomState({ 'user-b': true }, { revealed: true, votes: { 'user-a': '5', 'user-b': '8' } }));
       const withVote = within(screen.getByRole('list', { name: 'Participant votes' })).getAllByRole('listitem');
       expect(withVote.map((row) => row.textContent)).toEqual(['Alice5', 'Bob8']);
+    });
+
+    it('keeps host controls for a spectating host, who can opt in to voting', async () => {
+      const ws = await joinAsBob();
+      ws.emit(roomState({ 'user-b': true }, { hostId: 'user-b' }));
+      expect(screen.getByRole('switch', { name: 'Spectate' })).toBeChecked();
+      expect(screen.queryByRole('button', { name: '5' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reveal votes' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reset votes' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Add ticket' })).toBeInTheDocument();
+
+      await userEvent.setup().click(screen.getByRole('switch', { name: 'Spectate' }));
+      expect(ws.sent).toEqual([{ type: 'setSpectating', spectating: false }]);
+      ws.emit(roomState({}, { hostId: 'user-b' }));
+      expect(screen.getByRole('button', { name: '5' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Reveal votes' })).toBeInTheDocument();
+    });
+  });
+
+  describe('room layout', () => {
+    const state = (hostId: string) => ({
+      type: 'state',
+      hostId,
+      revealed: false,
+      tickets: [],
+      activeTicketId: null,
+      round: 0,
+      users: [
+        { id: 'user-a', name: 'Alice', hasVoted: false, spectating: true },
+        { id: 'user-b', name: 'Bob', hasVoted: false, spectating: false },
+      ],
+      votes: null,
+      myVote: null,
+    });
+
+    async function joinAsBob(hostId: string) {
+      mockRoomStatus({ exists: true, userCount: 1, capacity: 50, full: false });
+      render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin('Bob', 'Penguin');
+      await vi.waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+      const ws = FakeWebSocket.instances[0];
+      ws.emit({ type: 'welcome', userId: 'user-b' });
+      ws.emit(state(hostId));
+    }
+
+    const sidebarBoxes = () =>
+      Array.from(screen.getByRole('complementary', { name: 'Room' }).children).map(
+        (box) => box.getAttribute('aria-label') ?? box.querySelector('h2')?.textContent,
+      );
+
+    it('orders the host sidebar as team link, voting controls, room members and spectate toggle', async () => {
+      await joinAsBob('user-b');
+      expect(sidebarBoxes()).toEqual(['Share this room', 'Voting controls', 'In the room (2)', 'Participation']);
+    });
+
+    it('keeps the same sidebar order for participants, without voting controls', async () => {
+      await joinAsBob('user-a');
+      expect(sidebarBoxes()).toEqual(['Share this room', 'In the room (2)', 'Participation']);
+      expect(screen.queryByRole('region', { name: 'Add tickets' })).not.toBeInTheDocument();
+    });
+
+    it('places Add tickets directly beneath the room-ready message for the host', async () => {
+      await joinAsBob('user-b');
+      const hero = screen.getByRole('region', { name: 'The room is ready' });
+      const addTickets = screen.getByRole('region', { name: 'Add tickets' });
+      expect(hero.nextElementSibling).toBe(addTickets);
+      expect(within(addTickets).getByRole('button', { name: 'Add ticket' })).toHaveClass('primary');
     });
   });
 

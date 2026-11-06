@@ -302,6 +302,14 @@ textarea[aria-invalid='true'] {
   font-weight: 600;
 }
 
+.replaced {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  text-align: center;
+}
+
 .vote-actions {
   display: flex;
   flex-wrap: wrap;
@@ -440,7 +448,7 @@ textarea[aria-invalid='true'] {
   min-width: 0;
 }
 
-.room-main > .card:not(.vote-results):not(.room-hero) {
+.room-main > .card:not(.vote-results):not(.room-hero):not(.add-tickets) {
   background: none;
   border: none;
   border-radius: 0;
@@ -448,11 +456,16 @@ textarea[aria-invalid='true'] {
 }
 
 .room-side {
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--line);
+  gap: 1rem;
 }
 
-.room-side > .card,
+.room-side > section {
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
 .room-tickets > .card {
   background: none;
   border: none;
@@ -488,10 +501,6 @@ textarea[aria-invalid='true'] {
 
   .room-side {
     grid-area: side;
-    padding: 1.5rem;
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    background: var(--surface);
   }
 
   .room-tickets {
@@ -597,6 +606,10 @@ textarea[aria-invalid='true'] {
   align-items: center;
   padding: 0.7rem 0;
   border-bottom: 1px solid var(--line);
+}
+
+.roster-item:last-child {
+  border-bottom: none;
 }
 
 .roster-item .avatar {
@@ -794,16 +807,20 @@ textarea[aria-invalid='true'] {
 /* ---------- Tickets ---------- */
 
 .ticket-form,
-.ticket-add {
+.add-tickets {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-.ticket-add {
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--line);
+.add-tickets h2 {
+  margin: 0;
+}
+
+.add-tickets .ticket-form button.primary {
+  width: 100%;
+  min-height: 52px;
+  font-size: 1.1rem;
 }
 
 .ticket-form .vote-actions {
