@@ -3,6 +3,7 @@ import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { Config } from './config.js';
+import { KeepAwake, type KeepAwakeLifecycle } from './keepAwake.js';
 import { Room } from './rooms.js';
 import { isValidRoomId, parseClientMessage, parseConnectParams, type ConnectParams } from './validation.js';
 
@@ -37,11 +38,13 @@ function parseRequestUrl(req: IncomingMessage): URL | null {
   }
 }
 
-export function createAppServer(config: Config): AppServer {
+export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLifecycle): AppServer {
   const rooms = new Map<string, Room>();
   const roomSockets = new Map<string, Map<string, WebSocket>>();
   const connections = new Map<WebSocket, Connection>();
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+  const keepAwake =
+    keepAwakeLifecycle ?? new KeepAwake(config.renderExternalUrl, config.roomKeepAwakeDurationMs);
   let shuttingDown = false;
   let onAllClosed: (() => void) | undefined;
 
@@ -128,6 +131,7 @@ export function createAppServer(config: Config): AppServer {
     if (room.size === 0) {
       rooms.delete(room.id);
       roomSockets.delete(room.id);
+      keepAwake.roomClosed(room.id);
     } else {
       broadcast(room);
     }
@@ -144,6 +148,7 @@ export function createAppServer(config: Config): AppServer {
       room = new Room(params.room, params.deck);
       rooms.set(room.id, room);
       roomSockets.set(room.id, new Map());
+      keepAwake.roomCreated(room.id);
     }
 
     const member = room.add(params.name, params.avatar, params.spectating);
@@ -257,6 +262,7 @@ export function createAppServer(config: Config): AppServer {
     async shutdown() {
       shuttingDown = true;
       clearInterval(heartbeat);
+      keepAwake.shutdown();
       for (const ws of connections.keys()) ws.close(1001, 'server_shutdown');
 
       await new Promise<void>((resolve) => {

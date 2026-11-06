@@ -7,6 +7,8 @@ export interface Config {
   rateLimitMax: number;
   rateLimitWindowMs: number;
   allowedOrigins: string[];
+  roomKeepAwakeDurationMs: number;
+  renderExternalUrl?: string;
 }
 
 function readInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -17,6 +19,30 @@ function readInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number
     throw new Error(`Invalid ${name}: expected a non-negative integer, got "${raw}"`);
   }
   return value;
+}
+
+function readPositiveInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const value = readInt(env, name, fallback);
+  if (value === 0) {
+    throw new Error(`Invalid ${name}: expected a positive integer, got "0"`);
+  }
+  return value;
+}
+
+function readOptionalHttpUrl(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const raw = env[name]?.trim();
+  if (!raw) return undefined;
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(`Invalid ${name}: expected an absolute HTTP(S) URL`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`Invalid ${name}: expected an absolute HTTP(S) URL`);
+  }
+  return url.origin;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -32,5 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    roomKeepAwakeDurationMs: readPositiveInt(env, 'ROOM_KEEP_AWAKE_DURATION_MS', 90 * 60 * 1_000),
+    renderExternalUrl: readOptionalHttpUrl(env, 'RENDER_EXTERNAL_URL'),
   };
 }

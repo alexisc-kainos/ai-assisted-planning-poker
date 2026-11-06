@@ -36,6 +36,12 @@ npm run build
 | `HEARTBEAT_TIMEOUT_MS` | `10000` | Pong timeout before a socket is closed |
 | `SHUTDOWN_GRACE_MS` | `20000` | Maximum wait for sockets to close on `SIGTERM` |
 | `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` | `20` / `10000` | Inbound messages allowed per socket per window |
+| `ROOM_KEEP_AWAKE_DURATION_MS` | `5400000` | How long each open room keeps the Render service active after room creation |
+
+On Render, the backend uses the platform-provided `RENDER_EXTERNAL_URL` to request
+its own `/health` endpoint every 10 minutes while any room is inside its
+keep-awake window. When no room is active or the public URL is unavailable, no
+keep-awake request is made. Local development does not need this variable.
 
 ### Frontend (build-time variables)
 
