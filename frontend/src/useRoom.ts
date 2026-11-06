@@ -26,6 +26,7 @@ export type JoinStatus =
 const SESSION_EXPIRED = 4001;
 const REPLACED = 4002;
 
+const MEMBER_REFRESH_INTERVAL_MS = 5_000;
 const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 // 2+4+8+16+30+30s covers a Render free-tier cold start.
@@ -239,6 +240,12 @@ export function useRoom(roomId: string) {
       ws?.close();
     };
   }, [roomId, connect, refreshMembers]);
+
+  useEffect(() => {
+    if (status === 'joined' || status === 'rejoining' || status === 'reconnecting' || status === 'replaced') return;
+    const timer = setInterval(() => void refreshMembers(), MEMBER_REFRESH_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [status, refreshMembers]);
 
   return {
     status,

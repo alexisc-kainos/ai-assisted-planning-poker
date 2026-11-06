@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomPage } from '../RoomPage';
@@ -151,6 +151,33 @@ describe('RoomPage', () => {
 
       expect(screen.getByRole('alert')).toHaveTextContent(takenMessage);
       expect(screen.getByRole('button', { name: 'Join room' })).toBeDisabled();
+    });
+
+    describe('member status refresh', () => {
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('offers takeover when a matching member becomes away while the form is open', async () => {
+        vi.useFakeTimers();
+        const fetchMock = vi
+          .fn()
+          .mockResolvedValueOnce(status([]))
+          .mockResolvedValue(status([{ name: 'Alice', away: true }]));
+        vi.stubGlobal('fetch', fetchMock);
+        render(<RoomPage roomId={ROOM} />);
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Alice' } });
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5_000);
+        });
+
+        expect(screen.getByRole('status')).toHaveTextContent('Alice is away in this room. Is that you?');
+      });
     });
 
     it('rejects a name taken after the form loaded when Join is pressed', async () => {
