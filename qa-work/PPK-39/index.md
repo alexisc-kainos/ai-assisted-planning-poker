@@ -20,7 +20,7 @@ inputs:
 
 - **Verdict:** Go with conditions — the approved implementation is complete and local checks pass; deployed Render validation remains outstanding.
 - **Top risks:** 1. **HIGH:** an expired or missed self-ping can allow Render to sleep and lose in-memory room state. 2. **MEDIUM:** runtime behavior depends on Render's public URL and idle policy. 3. **MEDIUM:** an unsuccessful health request needs clear logging and retry behavior.
-- **Next action:** Arrange Render access/deployment to execute TS-08; no deployment or external action is authorized by the current approvals.
+- **Next action:** Complete Render lifecycle validation after the PR is merged and deployed; merge and deployment have not occurred.
 
 ## Next Steps
 
@@ -85,4 +85,6 @@ inputs:
 | L3 | Full backend test suite | `npm test -w backend` on local macOS / Node v22.22.1; loopback test servers only; no external service or persistent data | User, 2026-11-06 | Approved and PASS; 4 files / 188 tests at 2026-11-06T08:59Z |
 | L3 | Render lifecycle validation | Deployed service, room window and Render dashboard/access; allow at least 90 minutes plus idle threshold | Pending access and exact environment approval | BLOCKED; not run |
 | L4 | Push branch | Push `feature/ppk-39-keep-awake` / `cd790d0894b03ee51977b6d653c91eb843bd05de` to `origin` | User approved exact branch and commit, 2026-11-06 | PASS; remote ref verified with `git ls-remote` |
-| L4 | PR / merge / deployment | No PR or merge requested/performed; deployment follows merge per user | Not approved | Not performed |
+| L4 | Create pull request | Create PR in `alexisc-kainos/ai-assisted-planning-poker`, base `main`, head `feature/ppk-39-keep-awake`, title `feat(backend): keep Render awake during active rooms (PPK-39)`, approved description, no owner reviewers | User, 2026-11-06 | PASS; [PR #12](https://github.com/alexisc-kainos/ai-assisted-planning-poker/pull/12), verified open with expected base/head/title/body |
+| L4 | Request Copilot review | Request `Copilot` on PR #12 using `gh pr edit --add-reviewer Copilot`; REST fallback attempted with same PR/reviewer | User, 2026-11-06 | FAILED; CLI returned GitHub Projects classic deprecation GraphQL error; REST API and PR view show no requested reviewers |
+| L4 | Merge / deployment | No merge or deployment performed; user stated merge will deploy it | Not requested | Not performed |
