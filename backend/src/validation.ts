@@ -19,7 +19,15 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32}$/;
 
 export type ConnectParams =
   | { room: string; token: string }
-  | { room: string; token?: undefined; name: string; deck?: string; avatar?: string; spectating?: boolean };
+  | {
+      room: string;
+      token?: undefined;
+      name: string;
+      deck?: string;
+      avatar?: string;
+      spectating?: boolean;
+      takeover?: boolean;
+    };
 
 type OptionalResult = { ok: true; value?: string } | { ok: false };
 
@@ -46,7 +54,17 @@ export function parseConnectParams(params: URLSearchParams): ConnectParams | nul
   const spectating = params.get('spectating');
   if (spectating !== null && spectating !== '1') return null;
 
-  return { room, name, deck: deck.value, avatar: avatar.value, ...(spectating ? { spectating: true } : {}) };
+  const takeover = params.get('takeover');
+  if (takeover !== null && takeover !== '1') return null;
+
+  return {
+    room,
+    name,
+    deck: deck.value,
+    avatar: avatar.value,
+    ...(spectating ? { spectating: true } : {}),
+    ...(takeover ? { takeover: true } : {}),
+  };
 }
 
 export type TicketType = 'story' | 'spike';

@@ -42,7 +42,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
     capacity,
     userId,
     state,
+    members,
     join,
+    takeOver,
     resume,
     vote,
     reveal,
@@ -166,7 +168,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
           {restoring ? 'Reconnecting…' : 'Connecting… the server may take up to a minute to wake up.'}
         </p>
       )}
-      {!restoring && <JoinForm onJoin={join} busy={busy} />}
+      {!restoring && <JoinForm onJoin={join} onTakeover={takeOver} members={members} busy={busy} />}
     </div>
   );
 }

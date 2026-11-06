@@ -3,6 +3,13 @@ export const MAX_TICKET_TITLE_LENGTH = 100;
 export const MAX_TICKET_DESCRIPTION_LENGTH = 500;
 export const MAX_TICKETS = 10;
 
+const normaliseName = (name: string): string => name.trim().toLowerCase();
+
+export function findMember<T extends { name: string }>(members: readonly T[], name: string): T | undefined {
+  const wanted = normaliseName(name);
+  return members.find((member) => normaliseName(member.name) === wanted);
+}
+
 export function nameError(name: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return 'Name is required';

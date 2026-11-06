@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_URL, DEFAULT_DECK, WS_URL } from './config';
 import { clearSession, isCreator, loadSession, saveSession } from './room';
-import type { ClientMessage, RoomState, RoomStatus, ServerMessage, TicketFields, TicketType } from './types';
+import type {
+  ClientMessage,
+  RoomMemberName,
+  RoomState,
+  RoomStatus,
+  ServerMessage,
+  TicketFields,
+  TicketType,
+} from './types';
+import { findMember } from './validation';
 
 export type JoinStatus =
   | 'idle'
@@ -17,6 +26,7 @@ export type JoinStatus =
 const SESSION_EXPIRED = 4001;
 const REPLACED = 4002;
 
+const MEMBER_REFRESH_INTERVAL_MS = 5_000;
 const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 // 2+4+8+16+30+30s covers a Render free-tier cold start.
@@ -31,7 +41,9 @@ export async function fetchRoomStatus(roomId: string): Promise<RoomStatus> {
   return res.json();
 }
 
-type Credentials = { token: string } | { name: string; avatar: string };
+type Credentials = { token: string } | { name: string; avatar: string } | { name: string; takeover: true };
+
+const JOIN_FAILED = "Couldn't join — the room may be full or unavailable. Please try again.";
 
 export function useRoom(roomId: string) {
   const [status, setStatus] = useState<JoinStatus>(() => (loadSession(roomId) ? 'rejoining' : 'idle'));
@@ -39,14 +51,28 @@ export function useRoom(roomId: string) {
   const [capacity, setCapacity] = useState<number | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
+  const [members, setMembers] = useState<RoomMemberName[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const refreshMembers = useCallback(async (): Promise<RoomMemberName[] | null> => {
+    try {
+      const latest = (await fetchRoomStatus(roomId)).members ?? [];
+      setMembers(latest);
+      return latest;
+    } catch {
+      return null;
+    }
+  }, [roomId]);
 
   const connect = useCallback(
     (credentials: Credentials, reconnectAttempt: number | null = null) => {
       const params = new URLSearchParams({ room: roomId });
       if ('token' in credentials) {
         params.set('token', credentials.token);
+      } else if ('takeover' in credentials) {
+        params.set('name', credentials.name);
+        params.set('takeover', '1');
       } else {
         params.set('name', credentials.name);
         params.set('avatar', credentials.avatar);
@@ -90,6 +116,7 @@ export function useRoom(roomId: string) {
           clearSession(roomId);
           setStatus('idle');
           setError(null);
+          void refreshMembers();
         } else if (event.code === REPLACED) {
           setStatus('replaced');
           setError(null);
@@ -97,13 +124,25 @@ export function useRoom(roomId: string) {
           retry(0);
         } else if (reconnectAttempt !== null && reconnectAttempt + 1 < MAX_RECONNECT_ATTEMPTS) {
           retry(reconnectAttempt + 1);
+        } else if (reconnectAttempt === null && 'name' in credentials) {
+          // The browser hides why the upgrade failed, so check whether the name was taken meanwhile.
+          void refreshMembers().then((latest) => {
+            const holder = latest && findMember(latest, credentials.name);
+            if (holder && !('takeover' in credentials && holder.away)) {
+              setStatus('idle');
+              setError(null);
+            } else {
+              setStatus('error');
+              setError(JOIN_FAILED);
+            }
+          });
         } else {
           setStatus('error');
-          setError("Couldn't join — the room may be full or unavailable. Please try again.");
+          setError(JOIN_FAILED);
         }
       };
     },
-    [roomId],
+    [roomId, refreshMembers],
   );
 
   const join = useCallback(
@@ -126,6 +165,12 @@ export function useRoom(roomId: string) {
         setError("Couldn't reach the server. Please try again.");
         return;
       }
+      const latest = roomStatus.members ?? [];
+      setMembers(latest);
+      if (findMember(latest, name)) {
+        setStatus('idle');
+        return;
+      }
       if (roomStatus.full) {
         setCapacity(roomStatus.capacity);
         setStatus('full');
@@ -135,6 +180,15 @@ export function useRoom(roomId: string) {
       connect({ name, avatar });
     },
     [roomId, connect],
+  );
+
+  const takeOver = useCallback(
+    (name: string) => {
+      setStatus('connecting');
+      setError(null);
+      connect({ name, takeover: true });
+    },
+    [connect],
   );
 
   const resume = useCallback(() => {
@@ -178,13 +232,20 @@ export function useRoom(roomId: string) {
   useEffect(() => {
     const token = loadSession(roomId);
     if (token) connect({ token }, 0);
+    else void refreshMembers();
     return () => {
       clearTimeout(reconnectTimer.current);
       const ws = socketRef.current;
       socketRef.current = null;
       ws?.close();
     };
-  }, [roomId, connect]);
+  }, [roomId, connect, refreshMembers]);
+
+  useEffect(() => {
+    if (status === 'joined' || status === 'rejoining' || status === 'reconnecting' || status === 'replaced') return;
+    const timer = setInterval(() => void refreshMembers(), MEMBER_REFRESH_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [status, refreshMembers]);
 
   return {
     status,
@@ -192,7 +253,9 @@ export function useRoom(roomId: string) {
     capacity,
     userId,
     state,
+    members,
     join,
+    takeOver,
     resume,
     vote,
     reveal,

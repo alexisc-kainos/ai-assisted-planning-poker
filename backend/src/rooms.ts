@@ -12,6 +12,8 @@ export interface Member {
   connected: boolean;
 }
 
+export const normaliseName = (name: string): string => name.trim().toLowerCase();
+
 export interface TicketResult {
   users: Array<{ id: string; name: string; avatar?: string }>;
   votes: Record<string, string>;
@@ -78,6 +80,23 @@ export class Room {
   findByToken(token: string): Member | undefined {
     for (const member of this.members.values()) if (member.token === token) return member;
     return undefined;
+  }
+
+  findByName(name: string): Member | undefined {
+    const wanted = normaliseName(name);
+    for (const member of this.members.values()) if (normaliseName(member.name) === wanted) return member;
+    return undefined;
+  }
+
+  /** Name and away flag for each member, in seat order. */
+  memberNames(): Array<{ name: string; away: boolean }> {
+    return this.orderedMembers().map(({ name, connected }) => ({ name, away: !connected }));
+  }
+
+  /** Hands an away member to a new connection; the old token stops working. */
+  takeOver(member: Member): void {
+    member.token = randomBytes(24).toString('base64url');
+    this.rejoin(member);
   }
 
   markAway(userId: string): void {

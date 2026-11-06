@@ -97,20 +97,18 @@ describe('create and join handshake', () => {
     expect(bobView).not.toHaveProperty('deck');
   });
 
-  it('allows duplicate names and duplicate avatars', async () => {
+  it('allows duplicate avatars', async () => {
     await start();
     const first = await connect(port, { room: ROOM, name: 'Sam', avatar: 'penguin' });
     await first.next('state');
-    const second = await connect(port, { room: ROOM, name: 'Sam', avatar: 'penguin' });
+    const second = await connect(port, { room: ROOM, name: 'Kim', avatar: 'penguin' });
     await second.next('welcome');
 
     const state: Message = await second.next('state');
-    expect(state.users).toHaveLength(2);
     expect(state.users.map((u: Message) => [u.name, u.avatar])).toEqual([
       ['Sam', 'penguin'],
-      ['Sam', 'penguin'],
+      ['Kim', 'penguin'],
     ]);
-    expect(state.users[0].id).not.toEqual(state.users[1].id);
   });
 
   it('omits avatar when none is provided and trims the name', async () => {
@@ -142,6 +140,8 @@ describe('create and join handshake', () => {
     ['deck over 32 chars', { room: ROOM, name: 'Alice', deck: 'd'.repeat(33) }],
     ['avatar over 32 chars', { room: ROOM, name: 'Alice', avatar: 'a'.repeat(33) }],
     ['invalid spectating', { room: ROOM, name: 'Alice', spectating: 'true' }],
+    ['invalid takeover', { room: ROOM, name: 'Alice', takeover: 'yes' }],
+    ['takeover without name', { room: ROOM, takeover: '1' }],
     ['malformed token', { room: ROOM, token: 'short' }],
   ])('rejects the upgrade with 400 for %s', async (_label, params) => {
     await start();
@@ -154,11 +154,17 @@ describe('room capacity', () => {
     await start({ maxRoomUsers: 2 });
     const a = await connect(port, { room: ROOM, name: 'A' });
     await a.next('state');
-    expect(await (await roomStatus(ROOM)).json()).toEqual({ exists: true, userCount: 1, capacity: 2, full: false });
+    expect(await (await roomStatus(ROOM)).json()).toEqual({
+      exists: true,
+      userCount: 1,
+      capacity: 2,
+      full: false,
+      members: [{ name: 'A', away: false }],
+    });
 
     const b = await connect(port, { room: ROOM, name: 'B' });
     await b.next('state');
-    expect(await (await roomStatus(ROOM)).json()).toEqual({ exists: true, userCount: 2, capacity: 2, full: true });
+    expect(await (await roomStatus(ROOM)).json()).toMatchObject({ userCount: 2, full: true });
 
     expect(await rejectedStatus(port, { room: ROOM, name: 'C' })).toBe(403);
   });
@@ -224,7 +230,7 @@ describe('leaving and host promotion', () => {
     await alice.close();
     await bob.next('state');
 
-    const again = await connect(port, { room: ROOM, name: 'Alice' });
+    const again = await connect(port, { room: ROOM, name: 'Alicia' });
     const { userId: newId } = await again.next('welcome');
     const state = await again.next('state');
     expect(newId).not.toBe(oldId);
@@ -358,7 +364,155 @@ describe('rejoining with a token', () => {
   });
 });
 
+describe('unique names', () => {
+  const closeOf = async (client: TestClient) => {
+    const [code, reason] = await once(client.ws, 'close');
+    return [code, reason.toString()];
+  };
+
+  async function hostAndAwayGuest(overrides: Partial<Config> = {}) {
+    await start(overrides);
+    const host = await connect(port, { room: ROOM, name: 'Host', avatar: 'capybara' });
+    const hostWelcome = await host.next('welcome');
+    const guest = await connect(port, { room: ROOM, name: 'Guest', avatar: 'penguin', spectating: '1' });
+    const guestWelcome = await guest.next('welcome');
+    await host.settledState();
+    await guest.settledState();
+    await guest.close();
+    await host.next('state');
+    return { host, hostWelcome, guestWelcome };
+  }
+
+  it.each([
+    ['the same name', 'Alice'],
+    ['a different case', 'aLiCe'],
+    ['leading and trailing spaces', '  ALICE  '],
+  ])('rejects %s with 409', async (_label, name) => {
+    await start();
+    const alice = await connect(port, { room: ROOM, name: 'Alice' });
+    await alice.next('state');
+    expect(await rejectedStatus(port, { room: ROOM, name })).toBe(409);
+  });
+
+  it('treats inner spaces as significant', async () => {
+    await start();
+    const first = await connect(port, { room: ROOM, name: 'Ann Lee' });
+    await first.next('state');
+    const second = await connect(port, { room: ROOM, name: 'Ann  Lee' });
+    expect((await second.next('state')).users).toHaveLength(2);
+  });
+
+  it('rejects the name of an away member with 409', async () => {
+    await hostAndAwayGuest();
+    expect(await rejectedStatus(port, { room: ROOM, name: 'guest' })).toBe(409);
+  });
+
+  it('lets the same name join different rooms', async () => {
+    await start();
+    const a = await connect(port, { room: ROOM, name: 'Alice' });
+    await a.next('state');
+    const b = await connect(port, { room: 'abcd-efgh', name: 'Alice' });
+    expect((await b.next('state')).users).toMatchObject([{ name: 'Alice' }]);
+  });
+
+  it('frees the name once the room closes', async () => {
+    await start({ roomCloseGraceMs: 0 });
+    const alice = await connect(port, { room: ROOM, name: 'Alice' });
+    await alice.next('state');
+    await alice.close();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const again = await connect(port, { room: ROOM, name: 'Alice' });
+    expect((await again.next('state')).users).toMatchObject([{ name: 'Alice', away: false }]);
+  });
+
+  it('rejects the second of two joins racing for the same name', async () => {
+    await start();
+    await Promise.allSettled([
+      connect(port, { room: ROOM, name: 'Racer' }),
+      connect(port, { room: ROOM, name: 'racer' }),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect((await (await roomStatus(ROOM)).json()).members).toHaveLength(1);
+  });
+
+  it('takes over an away member, restoring avatar, spectating, vote and a new token', async () => {
+    const { host, guestWelcome } = await hostAndAwayGuest();
+    const voter = await connect(port, { room: ROOM, name: 'Voter' });
+    const voterWelcome = await voter.next('welcome');
+    await voter.settledState();
+    voter.send(vote('5'));
+    await voter.next('state');
+    await voter.close();
+    await host.settledState();
+
+    const taker = await connect(port, { room: ROOM, name: ' VOTER ', takeover: '1' });
+    const welcome = await taker.next('welcome');
+    expect(welcome.userId).toBe(voterWelcome.userId);
+    expect(welcome.token).toMatch(/^[A-Za-z0-9_-]{32}$/);
+    expect(welcome.token).not.toBe(voterWelcome.token);
+    const state = await taker.next('state');
+    expect(state.myVote).toBe('5');
+    expect(state.users[2]).toMatchObject({ name: 'Voter', away: false, hasVoted: true });
+
+    const guest = await connect(port, { room: ROOM, name: 'guest', takeover: '1', avatar: 'cat' });
+    expect(await guest.next('welcome')).toMatchObject({ userId: guestWelcome.userId });
+    expect((await guest.next('state')).users[1]).toMatchObject({ avatar: 'penguin', spectating: true });
+  });
+
+  it('gives the facilitator role back when taking over the original host', async () => {
+    await start();
+    const host = await connect(port, { room: ROOM, name: 'Host' });
+    const hostWelcome = await host.next('welcome');
+    const guest = await connect(port, { room: ROOM, name: 'Guest' });
+    const guestWelcome = await guest.next('welcome');
+    await guest.settledState();
+    await host.close();
+    expect((await guest.next('state')).hostId).toBe(guestWelcome.userId);
+
+    const taker = await connect(port, { room: ROOM, name: 'host', takeover: '1' });
+    await taker.next('welcome');
+    expect((await taker.next('state')).hostId).toBe(hostWelcome.userId);
+  });
+
+  it('invalidates the old token after a takeover', async () => {
+    const { guestWelcome } = await hostAndAwayGuest();
+    const taker = await connect(port, { room: ROOM, name: 'Guest', takeover: '1' });
+    await taker.next('welcome');
+    await taker.next('state');
+    const old = await connect(port, { room: ROOM, token: guestWelcome.token });
+    expect(await closeOf(old)).toEqual([4001, 'session_expired']);
+  });
+
+  it('lets an away member be taken over in a full room', async () => {
+    const { guestWelcome } = await hostAndAwayGuest({ maxRoomUsers: 2 });
+    const taker = await connect(port, { room: ROOM, name: 'Guest', takeover: '1' });
+    expect((await taker.next('welcome')).userId).toBe(guestWelcome.userId);
+  });
+
+  it('rejects a takeover of a connected member or an unknown name with 409', async () => {
+    await hostAndAwayGuest();
+    expect(await rejectedStatus(port, { room: ROOM, name: 'Host', takeover: '1' })).toBe(409);
+    expect(await rejectedStatus(port, { room: ROOM, name: 'Nobody', takeover: '1' })).toBe(409);
+    expect(await rejectedStatus(port, { room: 'abcd-efgh', name: 'Guest', takeover: '1' })).toBe(409);
+  });
+});
+
 describe('HTTP routes', () => {
+  it('GET /rooms/:id lists member names and who is away, in join order', async () => {
+    await start();
+    const alice = await connect(port, { room: ROOM, name: 'Alice', avatar: 'capybara' });
+    await alice.next('state');
+    const bob = await connect(port, { room: ROOM, name: 'Bob' });
+    await bob.next('state');
+    await alice.next('state');
+    await bob.close();
+    await alice.next('state');
+
+    expect((await (await roomStatus(ROOM)).json()).members).toEqual([
+      { name: 'Alice', away: false },
+      { name: 'Bob', away: true },
+    ]);
+  });
   it('GET /health returns ok without CORS headers', async () => {
     await start();
     const res = await fetch(`http://127.0.0.1:${port}/health`, { headers: { Origin: 'http://localhost:5173' } });
@@ -376,7 +530,13 @@ describe('HTTP routes', () => {
 
   it('GET /rooms/:id reports a room that does not exist yet', async () => {
     await start();
-    expect(await (await roomStatus(ROOM)).json()).toEqual({ exists: false, userCount: 0, capacity: 50, full: false });
+    expect(await (await roomStatus(ROOM)).json()).toEqual({
+      exists: false,
+      userCount: 0,
+      capacity: 50,
+      full: false,
+      members: [],
+    });
   });
 
   it('echoes allowed origins only', async () => {
