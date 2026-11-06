@@ -108,6 +108,14 @@ export function useRoom(roomId: string) {
 
   const join = useCallback(
     async (name: string, avatar: string) => {
+      const token = loadSession(roomId);
+      if (token) {
+        setStatus('rejoining');
+        setError(null);
+        connect({ token }, 0);
+        return;
+      }
+
       setStatus('checking');
       setError(null);
       let roomStatus: RoomStatus;

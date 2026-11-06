@@ -705,6 +705,27 @@ describe('RoomPage', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
+    it('retries manually with the saved token without checking room capacity', async () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      const fetchMock = mockRoomStatus({ exists: true, userCount: 50, capacity: 50, full: true });
+      vi.useFakeTimers();
+      render(<RoomPage roomId={ROOM} />);
+      FakeWebSocket.instances[0].serverClose(1006);
+      for (let attempt = 1; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
+        act(() => vi.advanceTimersByTime(reconnectDelay(attempt)));
+        FakeWebSocket.instances.at(-1)!.serverClose(1006);
+      }
+      vi.useRealTimers();
+
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't join — the room may be full or unavailable.");
+      await fillAndJoin();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      const manualRetry = FakeWebSocket.instances.at(-1)!;
+      expect(Object.fromEntries(new URL(manualRetry.url).searchParams)).toEqual({ room: ROOM, token: TOKEN });
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
+    });
+
     it('ignores a session saved for a different room', () => {
       localStorage.setItem('ppk:session:abcd-efgh', TOKEN);
       render(<RoomPage roomId={ROOM} />);
