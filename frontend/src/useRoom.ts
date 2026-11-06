@@ -164,15 +164,15 @@ export function useRoom(roomId: string) {
         setError("Couldn't reach the server. Please try again.");
         return;
       }
-      if (roomStatus.full) {
-        setCapacity(roomStatus.capacity);
-        setStatus('full');
-        return;
-      }
       const latest = roomStatus.members ?? [];
       setMembers(latest);
       if (findMember(latest, name)) {
         setStatus('idle');
+        return;
+      }
+      if (roomStatus.full) {
+        setCapacity(roomStatus.capacity);
+        setStatus('full');
         return;
       }
       setStatus('connecting');

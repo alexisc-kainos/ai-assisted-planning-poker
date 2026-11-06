@@ -135,9 +135,9 @@ describe('RoomPage', () => {
   });
 
   describe('names already in the room', () => {
-    const status = (members: Array<{ name: string; away: boolean }>) => ({
+    const status = (members: Array<{ name: string; away: boolean }>, full = false) => ({
       ok: true,
-      json: async () => ({ exists: true, userCount: members.length, capacity: 50, full: false, members }),
+      json: async () => ({ exists: true, userCount: members.length, capacity: 50, full, members }),
     });
     const takenMessage = 'Someone in this room is already called Alice. Please choose a different name.';
 
@@ -166,6 +166,23 @@ describe('RoomPage', () => {
       expect(await screen.findByRole('alert')).toHaveTextContent(takenMessage);
       expect(FakeWebSocket.instances).toHaveLength(0);
       expect(screen.getByRole('button', { name: 'Join room' })).toBeDisabled();
+    });
+
+    it('offers takeover when an away member is discovered in a full room', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(status([]))
+        .mockResolvedValue(status([{ name: 'Alice', away: true }], true));
+      vi.stubGlobal('fetch', fetchMock);
+      render(<RoomPage roomId={ROOM} />);
+      await fillAndJoin('Alice');
+
+      const takeover = await screen.findByRole('button', { name: 'Rejoin as Alice' });
+      expect(FakeWebSocket.instances).toHaveLength(0);
+      await userEvent.setup().click(takeover);
+
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(new URL(FakeWebSocket.instances[0].url).searchParams.get('takeover')).toBe('1');
     });
 
     it('explains a refused connection when the name was taken in the meantime', async () => {
