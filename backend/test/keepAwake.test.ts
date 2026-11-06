@@ -90,6 +90,36 @@ describe('KeepAwake', () => {
     expect(request).toHaveBeenCalledTimes(8);
   });
 
+  it('times out stalled requests, retries on the next tick, and expires at the original deadline', async () => {
+    const request = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+            once: true,
+          });
+        }),
+    );
+    vi.stubGlobal('fetch', request);
+    const logError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    keepAwake = new KeepAwake('https://planning-poker.onrender.com', NINETY_MINUTES);
+    keepAwake.roomCreated('room-eight');
+
+    await vi.advanceTimersByTimeAsync(TEN_MINUTES);
+    expect(request).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(10 * 1_000);
+    expect(logError).toHaveBeenCalledWith('Keep-awake health request failed', expect.any(DOMException));
+
+    await vi.advanceTimersByTimeAsync(TEN_MINUTES - 10 * 1_000);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(logError).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(NINETY_MINUTES - 2 * TEN_MINUTES);
+    expect(request).toHaveBeenCalledTimes(8);
+    expect(logError).toHaveBeenCalledTimes(8);
+    await vi.advanceTimersByTimeAsync(TEN_MINUTES);
+    expect(request).toHaveBeenCalledTimes(8);
+  });
+
   it('stops its timer and aborts a pending request on shutdown', async () => {
     const request = vi.fn(
       (_input: RequestInfo | URL, init?: RequestInit) =>
