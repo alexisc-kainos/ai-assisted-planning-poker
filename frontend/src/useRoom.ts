@@ -3,6 +3,9 @@ import { API_URL, DEFAULT_DECK, WS_URL } from './config';
 import { clearSession, isCreator, loadSession, saveSession } from './room';
 import type {
   ClientMessage,
+  JiraRequest,
+  JiraResult,
+  JiraStatus,
   RoomMemberName,
   RoomState,
   RoomStatus,
@@ -25,6 +28,7 @@ export type JoinStatus =
 
 const SESSION_EXPIRED = 4001;
 const REPLACED = 4002;
+export const JIRA_REQUEST_TIMEOUT_MS = 30_000;
 
 const MEMBER_REFRESH_INTERVAL_MS = 5_000;
 const RECONNECT_BASE_DELAY_MS = 2_000;
@@ -52,8 +56,44 @@ export function useRoom(roomId: string) {
   const [userId, setUserId] = useState<string | null>(null);
   const [state, setState] = useState<RoomState | null>(null);
   const [members, setMembers] = useState<RoomMemberName[]>([]);
+  const [jiraStatus, setJiraStatus] = useState<JiraStatus | null>(null);
+  const pendingJira = useRef(new Map<string, {
+    resolve: (result: JiraResult) => void;
+    reject: (error: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }>());
+  const requestSequence = useRef(0);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const clearJira = useCallback(() => {
+    for (const pending of pendingJira.current.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error('Connection changed. Jira outcome may be unknown; check Jira before trying again.'));
+    }
+    pendingJira.current.clear();
+    setJiraStatus(null);
+  }, []);
+
+  const jiraRequest = useCallback((request: JiraRequest): Promise<JiraResult> => {
+    const ws = socketRef.current;
+    if (ws?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('Room is not connected.'));
+    const requestId = `jira-${++requestSequence.current}`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pendingJira.current.delete(requestId);
+        reject(new Error('Jira request timed out. Outcome may be unknown; check Jira before trying again.'));
+      }, JIRA_REQUEST_TIMEOUT_MS);
+      pendingJira.current.set(requestId, { resolve, reject, timer });
+      try {
+        ws.send(JSON.stringify({ type: 'jira', requestId, ...request }));
+      } catch {
+        clearTimeout(timer);
+        pendingJira.current.delete(requestId);
+        reject(new Error('Could not send Jira request.'));
+      }
+    });
+  }, []);
 
   const refreshMembers = useCallback(async (): Promise<RoomMemberName[] | null> => {
     try {
@@ -67,6 +107,8 @@ export function useRoom(roomId: string) {
 
   const connect = useCallback(
     (credentials: Credentials, reconnectAttempt: number | null = null) => {
+      clearJira();
+      socketRef.current?.close();
       const params = new URLSearchParams({ room: roomId });
       if ('token' in credentials) {
         params.set('token', credentials.token);
@@ -90,7 +132,17 @@ export function useRoom(roomId: string) {
       ws.onmessage = (event) => {
         if (socketRef.current !== ws) return;
         const message = JSON.parse(event.data) as ServerMessage;
-        if (message.type === 'welcome') {
+        if (message.type === 'jira') {
+          const pending = pendingJira.current.get(message.requestId);
+          if (!pending) return;
+          clearTimeout(pending.timer);
+          pendingJira.current.delete(message.requestId);
+          if (message.data?.status) setJiraStatus(message.data.status);
+          if (message.ok) pending.resolve(message.data ?? {});
+          else pending.reject(new Error(`${message.data?.uncertain ? 'Jira outcome is uncertain. Check Jira before trying again. ' : ''}${message.error || 'Jira request failed.'}`));
+        } else if (message.type === 'jiraStatus') {
+          setJiraStatus(message.status);
+        } else if (message.type === 'welcome') {
           welcomed = true;
           token = message.token;
           saveSession(roomId, message.token);
@@ -102,6 +154,7 @@ export function useRoom(roomId: string) {
         } else if (message.type === 'error') {
           setError(message.message);
         } else if (message.type === 'replaced') {
+          clearJira();
           // A proxy can lose the close frame and report 1006 instead of 4002.
           socketRef.current = null;
           clearTimeout(reconnectTimer.current);
@@ -115,6 +168,7 @@ export function useRoom(roomId: string) {
 
       ws.onclose = (event) => {
         if (socketRef.current !== ws) return;
+        clearJira();
         socketRef.current = null;
         setState(null);
         setUserId(null);
@@ -155,7 +209,7 @@ export function useRoom(roomId: string) {
         }
       };
     },
-    [roomId, refreshMembers],
+    [roomId, refreshMembers, clearJira],
   );
 
   const join = useCallback(
@@ -244,15 +298,43 @@ export function useRoom(roomId: string) {
 
   useEffect(() => {
     const token = loadSession(roomId);
-    if (token) connect({ token }, 0);
-    else void refreshMembers();
+    // A hidden or prerendered page must not take the session from the tab the person is using.
+    const rejoinWhenShown = () => {
+      if (!token || document.hidden || (document as { prerendering?: boolean }).prerendering) return;
+      document.removeEventListener('visibilitychange', rejoinWhenShown);
+      document.removeEventListener('prerenderingchange', rejoinWhenShown);
+      connect({ token }, 0);
+    };
+    if (token) {
+      document.addEventListener('visibilitychange', rejoinWhenShown);
+      document.addEventListener('prerenderingchange', rejoinWhenShown);
+      rejoinWhenShown();
+    } else {
+      void refreshMembers();
+    }
     return () => {
+      document.removeEventListener('visibilitychange', rejoinWhenShown);
+      document.removeEventListener('prerenderingchange', rejoinWhenShown);
       clearTimeout(reconnectTimer.current);
+      clearJira();
       const ws = socketRef.current;
       socketRef.current = null;
       ws?.close();
     };
-  }, [roomId, connect, refreshMembers]);
+  }, [roomId, connect, refreshMembers, clearJira]);
+
+  const isHost = status === 'joined' && userId !== null && state?.hostId === userId;
+  useEffect(() => {
+    let active = true;
+    if (!isHost) {
+      clearJira();
+      return;
+    }
+    void jiraRequest({ action: 'status' }).catch(() => {
+      if (active) setJiraStatus({ available: false, connected: false, reason: 'Jira status unavailable.' });
+    });
+    return () => { active = false; };
+  }, [isHost, jiraRequest, clearJira]);
 
   useEffect(() => {
     if (status === 'joined' || status === 'rejoining' || status === 'reconnecting' || status === 'replaced') return;
@@ -262,6 +344,8 @@ export function useRoom(roomId: string) {
 
   return {
     status,
+    jiraStatus,
+    jiraRequest,
     error,
     capacity,
     userId,

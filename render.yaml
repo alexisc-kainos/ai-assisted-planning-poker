@@ -14,3 +14,9 @@ services:
         value: https://alexisc-kainos.github.io
       - key: MAX_ROOM_USERS
         value: "50"
+      - key: JIRA_OAUTH_CLIENT_ID
+        sync: false
+      - key: JIRA_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: JIRA_OAUTH_REDIRECT_URI
+        sync: false

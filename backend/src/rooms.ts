@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { MAX_TICKETS, type Ticket, type TicketType } from './validation.js';
+import { MAX_TICKETS, STORY_POINT_VALUES, type AdfDocument, type JiraLink, type Ticket, type TicketType } from './validation.js';
 
 export interface Member {
   id: string;
@@ -22,6 +22,10 @@ export interface TicketResult {
 export interface RoomTicket extends Ticket {
   id: string;
   result: TicketResult | null;
+  jira?: JiraLink;
+  descriptionAdf?: AdfDocument;
+  agreedEstimate?: number;
+  revision?: number;
 }
 
 export interface StateMessage {
@@ -146,6 +150,8 @@ export class Room {
         users: members.map(({ id, name, avatar }) => ({ id, name, ...(avatar ? { avatar } : {}) })),
         votes: this.revealedVotes(members),
       };
+      active.revision = (active.revision ?? 0) + 1;
+      delete active.agreedEstimate;
     }
     return null;
   }
@@ -173,6 +179,7 @@ export class Room {
     if (userId !== this.hostId) return 'Only the host can edit tickets';
     const ticket = this.tickets.find((existing) => existing.id === ticketId);
     if (!ticket) return 'Ticket not found';
+    if (ticket.jira) return 'Imported Jira details are read-only';
     ticket.title = title;
     ticket.description = description;
     if (type && type !== ticket.type) {
@@ -193,6 +200,25 @@ export class Room {
       this.activeTicketId = null;
       this.clearRound();
     }
+    return null;
+  }
+
+  importTicket(userId: string, ticket: Ticket & { jira: JiraLink; descriptionAdf: AdfDocument }): RoomTicket {
+    if (this.tickets.some((existing) => existing.jira?.cloudId === ticket.jira.cloudId &&
+        existing.jira.issueId === ticket.jira.issueId)) throw new Error('This Jira issue is already in the room');
+    const error = this.addTicket(userId, ticket);
+    if (error) throw new Error(error);
+    return this.tickets[this.tickets.length - 1];
+  }
+
+  agreeEstimate(userId: string, ticketId: string, points: number): string | null {
+    if (userId !== this.hostId) return 'Only the host can agree an estimate';
+    const ticket = this.tickets.find((existing) => existing.id === ticketId);
+    if (!ticket?.jira || ticket.type !== 'story' || !ticket.result ||
+        ticketId !== this.activeTicketId || !this.revealed) return 'Reveal a linked story before agreeing points';
+    if (!(STORY_POINT_VALUES as readonly number[]).includes(points)) return 'Choose a numeric value from the story deck';
+    ticket.agreedEstimate = points;
+    ticket.revision = (ticket.revision ?? 0) + 1;
     return null;
   }
 
@@ -242,6 +268,11 @@ export class Room {
   private clearRound(): void {
     this.round += 1;
     this.revealed = false;
+    const active = this.tickets.find((ticket) => ticket.id === this.activeTicketId);
+    if (active) {
+      delete active.agreedEstimate;
+      active.revision = (active.revision ?? 0) + 1;
+    }
     for (const member of this.members.values()) delete member.vote;
   }
 }

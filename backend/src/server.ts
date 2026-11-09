@@ -4,12 +4,14 @@ import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import type { Config } from './config.js';
 import { KeepAwake, type KeepAwakeLifecycle } from './keepAwake.js';
+import { JiraService } from './jira.js';
 import { Room, type Member } from './rooms.js';
 import { isValidRoomId, parseClientMessage, parseConnectParams, type ConnectParams } from './validation.js';
 
 interface Connection {
   room: Room;
   userId: string;
+  origin?: string;
   windowStart: number;
   messageCount: number;
   pongTimer?: NodeJS.Timeout;
@@ -48,6 +50,10 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     keepAwakeLifecycle ?? new KeepAwake(config.renderExternalUrl, config.roomKeepAwakeDurationMs);
   let shuttingDown = false;
   let onAllClosed: (() => void) | undefined;
+  const jira = new JiraService(config.jira, (room, status) => {
+    const ws = room.hostId ? roomSockets.get(room.id)?.get(room.hostId) : undefined;
+    if (ws) send(ws, { type: 'jiraStatus', status });
+  }, fetch, config.allowedOrigins);
 
   const send = (ws: WebSocket, message: unknown) => {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message));
@@ -77,6 +83,21 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     try {
       const parsed = parseClientMessage(data.toString());
       if (!parsed.ok) return send(ws, { type: 'error', message: parsed.error });
+
+      if (parsed.message.type === 'jira') {
+        const message = parsed.message;
+        void jira.action(conn.room, conn.userId, message, conn.origin).then((result) => {
+          if (connections.get(ws) === conn) {
+            send(ws, { type: 'jira', requestId: message.requestId, ok: true, data: result });
+          }
+          if (message.action === 'import' || message.action === 'agree') broadcast(conn.room);
+        }).catch((failure: unknown) => {
+          if (connections.get(ws) !== conn) return;
+          send(ws, { type: 'jira', requestId: message.requestId, ok: false,
+            error: failure instanceof Error ? failure.message : 'Jira request failed' });
+        });
+        return;
+      }
 
       const { message } = parsed;
       let error: string | null;
@@ -127,6 +148,8 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
 
   const closeRoom = (roomId: string) => {
     cancelClose(roomId);
+    const room = rooms.get(roomId);
+    if (room) jira.clear(room);
     rooms.delete(roomId);
     roomSockets.delete(roomId);
     keepAwake.roomClosed(roomId);
@@ -150,6 +173,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
     const { room, userId } = conn;
     roomSockets.get(room.id)?.delete(userId);
     room.markAway(userId);
+    jira.reconcile(room);
     if (room.connectedCount === 0) scheduleClose(room);
     else broadcast(room);
     if (connections.size === 0) onAllClosed?.();
@@ -192,6 +216,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       previous.close(4002, 'replaced');
     }
     room.rejoin(member);
+    jira.reconcile(room);
     cancelClose(room.id);
     attach(ws, room, member);
   };
@@ -204,6 +229,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       return;
     }
     room.takeOver(member);
+    jira.reconcile(room);
     cancelClose(room.id);
     attach(ws, room, member);
   };
@@ -278,6 +304,12 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       res.end('ok');
       return;
     }
+    if (pathname.startsWith('/jira/')) {
+      void jira.handleHttp(req, res, url).catch(() => {
+        if (!res.headersSent) sendJson(res, 400, { error: 'Jira authorisation failed or expired. Connect again from the room.' });
+      });
+      return;
+    }
     const roomMatch = /^\/rooms\/([^/]+)$/.exec(pathname);
     if (roomMatch) return handleRoomStatus(req, res, roomMatch[1]);
     sendJson(res, 404, { error: 'Not found' });
@@ -302,7 +334,11 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       }
     }
 
-    wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, params));
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      handleConnection(ws, params);
+      const connection = connections.get(ws);
+      if (connection) connection.origin = req.headers.origin;
+    });
   });
 
   const heartbeat = setInterval(() => {
@@ -330,6 +366,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
 
     async shutdown() {
       shuttingDown = true;
+      jira.shutdown();
       clearInterval(heartbeat);
       keepAwake.shutdown();
       for (const ws of connections.keys()) ws.close(1001, 'server_shutdown');

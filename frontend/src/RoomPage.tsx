@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CurrentTicket } from './CurrentTicket';
 import { JoinForm } from './JoinForm';
+import { JiraPanel, type JiraEstimateFeedback } from './JiraPanel';
 import { Mascot } from './Mascot';
 import { Roster } from './Roster';
 import { AddTicketForm, TicketPanel } from './TicketPanel';
@@ -36,6 +37,7 @@ function CopyLink({ url }: { url: string }) {
 }
 
 export function RoomPage({ roomId }: { roomId: string }) {
+  const [jiraFeedbackByMember, setJiraFeedbackByMember] = useState<Record<string, JiraEstimateFeedback | null>>({});
   const {
     status,
     error,
@@ -54,8 +56,15 @@ export function RoomPage({ roomId }: { roomId: string }) {
     removeTicket,
     selectTicket,
     setSpectating,
+    jiraStatus,
+    jiraRequest,
   } = useRoom(roomId);
   const url = joinUrl(roomId);
+  const jiraFeedbackScope = JSON.stringify([roomId, userId]);
+  const jiraEstimateFeedback = userId ? jiraFeedbackByMember[jiraFeedbackScope] ?? null : null;
+  const updateJiraEstimateFeedback = (feedback: JiraEstimateFeedback | null) => {
+    if (userId) setJiraFeedbackByMember((current) => ({ ...current, [jiraFeedbackScope]: feedback }));
+  };
 
   if (status === 'joined' && state) {
     const activeTicketIndex = state.tickets.findIndex((ticket) => ticket.id === state.activeTicketId);
@@ -91,6 +100,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
         </div>
         <aside className="room-side" aria-label="Room">
           <CopyLink url={url} />
+          {isHost && <JiraPanel status={jiraStatus} state={state} request={jiraRequest}
+            estimateFeedback={jiraEstimateFeedback} setEstimateFeedback={updateJiraEstimateFeedback} />}
           {isHost && (
             <section className="card" aria-labelledby="voting-controls-heading">
               <h2 id="voting-controls-heading">Voting controls</h2>
