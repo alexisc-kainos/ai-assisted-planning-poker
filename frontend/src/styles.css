@@ -1,7 +1,8 @@
 /*
  * Riverside Lounge theme (PPK-35), tokens from the PPK-34 concept A mockup.
  * Contrast (WCAG 2.2): --ink on --bg 11.9:1, on --surface 12.9:1; --muted on --bg 6.0:1;
- * white on --teal 6.2:1; --teal on --bg 5.4:1; --field border vs white 4.4:1; --focus vs --bg 7.5:1.
+ * white on --teal 6.2:1; --teal on --bg 5.4:1; --field border vs white 4.4:1; --focus vs --bg 7.5:1;
+ * white on --accent 5.0:1.
  */
 :root {
   --bg: #f4efe6;
@@ -11,6 +12,8 @@
   --teal: #2f6b62;
   --teal-dark: #24564f;
   --teal-soft: #e3ece7;
+  --accent: #b5531d;
+  --accent-dark: #8f4216;
   --line: #d6cfc2;
   --field: #6f7b79;
   --focus: #1d4f7a;
@@ -23,6 +26,14 @@
   --waiting-bg: #f3e6cf;
   --spectating-fg: #44406a;
   --spectating-bg: #e6e4f0;
+  --type-story-fg: #1f4f5a;
+  --type-story-bg: #dcecee;
+  --type-spike-fg: #6b4a12;
+  --type-spike-bg: #f3e6cf;
+  --type-bug-fg: #8f2424;
+  --type-bug-bg: #f9e1e1;
+  --type-task-fg: #1f5a45;
+  --type-task-bg: #dfeee6;
   --radius: 20px;
   --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --sans: 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -346,6 +357,18 @@ button.primary:hover:not(:disabled) {
   border-color: var(--teal-dark);
 }
 
+/* Amber accent for the key voting actions, so they stand out from other primary buttons. */
+button.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.accent:hover:not(:disabled) {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -477,6 +500,26 @@ textarea[aria-invalid='true'] {
 .badge.away {
   background: var(--badge-bg);
   color: var(--muted);
+}
+
+.badge.type-story {
+  background: var(--type-story-bg);
+  color: var(--type-story-fg);
+}
+
+.badge.type-spike {
+  background: var(--type-spike-bg);
+  color: var(--type-spike-fg);
+}
+
+.badge.type-bug {
+  background: var(--type-bug-bg);
+  color: var(--type-bug-fg);
+}
+
+.badge.type-task {
+  background: var(--type-task-bg);
+  color: var(--type-task-fg);
 }
 
 .mascot {

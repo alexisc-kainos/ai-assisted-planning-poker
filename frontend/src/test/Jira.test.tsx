@@ -562,6 +562,11 @@ describe('Jira room workflow', () => {
     expect(screen.queryByRole('button', { name: 'Update Jira' })).not.toBeInTheDocument();
   });
 
+  it.each(['bug', 'task'] as const)('offers writes for a linked, revealed %s ticket', async (type) => {
+    await ready({ ...roomState, revealed: true, tickets: [{ ...linked, type, result: linked.result }] });
+    expect(screen.getByLabelText('Story points')).toBeInTheDocument();
+  });
+
   it('disconnects without altering imported tickets or their results', async () => {
     const { ws } = await ready(agreedState());
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect Jira' }));

@@ -68,7 +68,7 @@ export function parseConnectParams(params: URLSearchParams): ConnectParams | nul
   };
 }
 
-export type TicketType = 'story' | 'spike';
+export type TicketType = 'story' | 'spike' | 'bug' | 'task';
 
 export interface Ticket {
   type: TicketType;
@@ -107,7 +107,8 @@ export type JiraClientMessage =
   | { type: 'jira'; requestId: string; action: 'prepare'; ticketId: string; fieldId?: string }
   | { type: 'jira'; requestId: string; action: 'confirm'; confirmationId: string };
 
-const isTicketType = (value: unknown): value is TicketType => value === 'story' || value === 'spike';
+export const isTicketType = (value: unknown): value is TicketType =>
+  value === 'story' || value === 'spike' || value === 'bug' || value === 'task';
 
 export type ClientMessage =
   | JiraClientMessage

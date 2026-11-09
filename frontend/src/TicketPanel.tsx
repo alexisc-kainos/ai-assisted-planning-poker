@@ -4,7 +4,7 @@ import { MAX_TICKETS, ticketDescriptionError, ticketTitleError } from './validat
 import { VoteResults } from './VoteResults';
 import { JiraDescription, JiraIssueLink } from './JiraDescription';
 
-export const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike' };
+export const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike', bug: 'Bug', task: 'Task' };
 
 interface TicketPanelProps {
   tickets: RoomTicket[];
@@ -21,7 +21,7 @@ function TicketTypeOptions({ value, onChange }: { value: TicketType; onChange: (
     <fieldset className="field">
       <legend>Ticket type</legend>
       <div className="type-options">
-        {(['story', 'spike'] as const).map((type) => (
+        {(['story', 'spike', 'bug', 'task'] as const).map((type) => (
           <label key={type}>
             <input type="radio" name={name} value={type} checked={value === type} onChange={() => onChange(type)} />{' '}
             {TYPE_LABELS[type]}
@@ -194,7 +194,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
   return (
     <li className={active ? 'ticket-item active' : 'ticket-item'} aria-current={active ? 'true' : undefined}>
       <div className="ticket-badges">
-        <span className="badge">{TYPE_LABELS[ticket.type]}</span>
+        <span className={`badge type-${ticket.type}`}>{TYPE_LABELS[ticket.type]}</span>
         {active && <span className="badge voted">Active</span>}
         {ticket.result && <span className="badge waiting">Revealed</span>}
       </div>
@@ -233,7 +233,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
       )}
       <div className="vote-actions">
         {isHost && !active && (
-          <button type="button" className="primary" onClick={() => onSelect(ticket.id)}>
+          <button type="button" className="accent" onClick={() => onSelect(ticket.id)}>
             Start voting
           </button>
         )}

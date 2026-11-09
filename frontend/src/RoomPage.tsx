@@ -106,7 +106,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
             <section className="card" aria-labelledby="voting-controls-heading">
               <h2 id="voting-controls-heading">Voting controls</h2>
               <div className="vote-actions">
-                <button type="button" className="primary" onClick={reveal}>Reveal votes</button>
+                <button type="button" className="accent" onClick={reveal}>Reveal votes</button>
                 <button type="button" onClick={reset}>Reset votes</button>
               </div>
             </section>

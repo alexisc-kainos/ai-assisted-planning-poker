@@ -214,7 +214,7 @@ export class Room {
   agreeEstimate(userId: string, ticketId: string, points: number): string | null {
     if (userId !== this.hostId) return 'Only the host can agree an estimate';
     const ticket = this.tickets.find((existing) => existing.id === ticketId);
-    if (!ticket?.jira || ticket.type !== 'story' || !ticket.result ||
+    if (!ticket?.jira || ticket.type === 'spike' || !ticket.result ||
         ticketId !== this.activeTicketId || !this.revealed) return 'Reveal a linked story before agreeing points';
     if (!(STORY_POINT_VALUES as readonly number[]).includes(points)) return 'Choose a numeric value from the story deck';
     ticket.agreedEstimate = points;
