@@ -63,8 +63,14 @@ export function JiraDescription({ document, issueUrl }: { document: AdfDocument;
       case 'rule': return <hr />;
       case 'table': return <div className="jira-table-scroll" tabIndex={0} role="region" aria-label="Jira table"><table><tbody>{children}</tbody></table></div>;
       case 'tableRow': return <tr>{children}</tr>;
-      case 'tableHeader': return <th scope="col">{children}</th>;
-      case 'tableCell': return <td>{children}</td>;
+      case 'tableHeader': return <th scope="col"
+        colSpan={typeof node.attrs?.colspan === 'number' && Number.isInteger(node.attrs.colspan) && node.attrs.colspan > 0 ? node.attrs.colspan : undefined}
+        rowSpan={typeof node.attrs?.rowspan === 'number' && Number.isInteger(node.attrs.rowspan) && node.attrs.rowspan > 0 ? node.attrs.rowspan : undefined}
+      >{children}</th>;
+      case 'tableCell': return <td
+        colSpan={typeof node.attrs?.colspan === 'number' && Number.isInteger(node.attrs.colspan) && node.attrs.colspan > 0 ? node.attrs.colspan : undefined}
+        rowSpan={typeof node.attrs?.rowspan === 'number' && Number.isInteger(node.attrs.rowspan) && node.attrs.rowspan > 0 ? node.attrs.rowspan : undefined}
+      >{children}</td>;
       case 'panel': return <div className="jira-adf-panel">{children}</div>;
       case 'mediaSingle':
       case 'mediaGroup':
