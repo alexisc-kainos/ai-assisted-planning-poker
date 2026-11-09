@@ -87,8 +87,9 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
       if (parsed.message.type === 'jira') {
         const message = parsed.message;
         void jira.action(conn.room, conn.userId, message, conn.origin).then((result) => {
-          if (connections.get(ws) !== conn) return;
-          send(ws, { type: 'jira', requestId: message.requestId, ok: true, data: result });
+          if (connections.get(ws) === conn) {
+            send(ws, { type: 'jira', requestId: message.requestId, ok: true, data: result });
+          }
           if (message.action === 'import' || message.action === 'agree') broadcast(conn.room);
         }).catch((failure: unknown) => {
           if (connections.get(ws) !== conn) return;
