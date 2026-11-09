@@ -497,6 +497,27 @@ describe('Jira room workflow', () => {
     expect(ws.requests('confirm')).toHaveLength(1);
   });
 
+  it('retains the uncertain write warning after reconnect for the same member only', async () => {
+    vi.useFakeTimers();
+    const { ws } = await ready(agreedState());
+    await openPreview(ws);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm write to Jira' }));
+    act(() => ws.onclose?.({ code: 1006 }));
+    await act(async () => vi.advanceTimersByTimeAsync(2_000));
+
+    const reconnected = Socket.instances[1];
+    reconnected.emit({ type: 'welcome', userId: 'host', token: 'session-token' });
+    reconnected.emit(agreedState());
+    await reply(reconnected, 'status', { status: connected });
+    expect(screen.getByRole('alert')).toHaveTextContent('Jira update for PPK-1 could not be verified');
+    expect(screen.getByRole('alert')).toHaveTextContent('Your saved estimate is kept.');
+
+    reconnected.emit({ type: 'welcome', userId: 'another-member', token: 'session-token' });
+    reconnected.emit({ ...agreedState(), hostId: 'another-member' });
+    await reply(reconnected, 'status', { status: connected });
+    expect(screen.queryByText(/Jira update for PPK-1/)).not.toBeInTheDocument();
+  });
+
   it('keeps verified success visible after switching tickets or disconnecting Jira', async () => {
     const { ws } = await ready(agreedState());
     await openPreview(ws);

@@ -4,6 +4,11 @@ import { JiraIssueLink, safeJiraUrl } from './JiraDescription';
 import type { JiraField, JiraPreview, JiraRequest, JiraResult, JiraStatus, RoomState, RoomTicket } from './types';
 
 type Request = (request: JiraRequest) => Promise<JiraResult>;
+export type JiraEstimateFeedback = {
+  error: boolean;
+  message: string;
+  write?: { confirmationId: string; issueKey: string };
+};
 const numericDeck = STORY_DECK.filter((value) => Number.isFinite(Number(value)));
 const errorText = (error: unknown) => error instanceof Error ? error.message : 'Jira request failed.';
 
@@ -237,12 +242,17 @@ function JiraImportInput({ input, onChange, busy, request }: {
   );
 }
 
-export function JiraPanel({ status, state, request }: { status: JiraStatus | null; state: RoomState; request: Request }) {
+export function JiraPanel({ status, state, request, estimateFeedback, setEstimateFeedback }: {
+  status: JiraStatus | null;
+  state: RoomState;
+  request: Request;
+  estimateFeedback: JiraEstimateFeedback | null;
+  setEstimateFeedback: (feedback: JiraEstimateFeedback | null) => void;
+}) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [authorizeUrl, setAuthorizeUrl] = useState('');
-  const [estimateFeedback, setEstimateFeedback] = useState<{ error: boolean; message: string } | null>(null);
   const live = useRef(true);
   const popupRef = useRef<Window | null>(null);
   useEffect(() => {
@@ -259,24 +269,24 @@ export function JiraPanel({ status, state, request }: { status: JiraStatus | nul
 
   const estimateRequest = async (target: RoomTicket, action: JiraRequest): Promise<JiraResult> => {
     const key = target.jira!.key;
-    setEstimateFeedback({ error: false, message: action.action === 'agree'
+    const write = action.action === 'confirm' ? { confirmationId: action.confirmationId, issueKey: key } : undefined;
+    setEstimateFeedback({ error: false, ...(write ? { write } : {}), message: action.action === 'agree'
       ? `Saving the agreement for ${key} in this room...`
       : action.action === 'confirm' ? `Updating ${key} in Jira...` : `Checking the Jira update for ${key}...` });
     try {
       const result = await request(action);
-      if (!live.current) return result;
       if (action.action === 'agree') {
         setEstimateFeedback({ error: false,
           message: `Agreement saved locally for ${key}: ${action.points} story points. Jira has not been updated.` });
       } else if (action.action === 'confirm') {
         if (result.uncertain) {
-          setEstimateFeedback({ error: true,
+          setEstimateFeedback({ error: true, ...(write ? { write } : {}),
             message: `Jira update outcome is uncertain for ${key}. Check the issue in Jira before trying again. Your saved estimate is kept.` });
         } else if (result.written === true) {
-          setEstimateFeedback({ error: false,
+          setEstimateFeedback({ error: false, ...(write ? { write } : {}),
             message: `Jira updated successfully: ${key} is now ${target.agreedEstimate} story points.` });
         } else {
-          setEstimateFeedback({ error: true,
+          setEstimateFeedback({ error: true, ...(write ? { write } : {}),
             message: `Jira update for ${key} could not be verified. Check the issue in Jira before trying again. Your saved estimate is kept.` });
         }
       } else {
@@ -284,16 +294,14 @@ export function JiraPanel({ status, state, request }: { status: JiraStatus | nul
       }
       return result;
     } catch (failure) {
-      if (live.current) {
-        const detail = errorText(failure);
-        const uncertain = /uncertain|unknown|timed out|connection changed/i.test(detail);
-        const message = action.action === 'agree' ? `Could not save the local agreement for ${key}: ${detail}`
-          : action.action === 'confirm' ? uncertain
-            ? `Jira update for ${key} could not be verified: ${detail} Check Jira before trying again. Your saved estimate is kept.`
-            : `Jira update failed for ${key}: ${detail} Your saved estimate is kept.`
-          : `Could not prepare the Jira update for ${key}: ${detail} Your saved estimate is kept.`;
-        setEstimateFeedback({ error: true, message });
-      }
+      const detail = errorText(failure);
+      const uncertain = /uncertain|unknown|timed out|connection changed/i.test(detail);
+      const message = action.action === 'agree' ? `Could not save the local agreement for ${key}: ${detail}`
+        : action.action === 'confirm' ? uncertain
+          ? `Jira update for ${key} could not be verified: ${detail} Check Jira before trying again. Your saved estimate is kept.`
+          : `Jira update failed for ${key}: ${detail} Your saved estimate is kept.`
+        : `Could not prepare the Jira update for ${key}: ${detail} Your saved estimate is kept.`;
+      setEstimateFeedback({ error: true, ...(write ? { write } : {}), message });
       throw failure;
     }
   };
