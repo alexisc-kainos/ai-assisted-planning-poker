@@ -1,5 +1,63 @@
 export type TicketType = 'story' | 'spike';
 
+export interface AdfNode {
+  type: string;
+  text?: string;
+  attrs?: Record<string, unknown>;
+  marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
+  content?: AdfNode[];
+}
+
+export interface AdfDocument {
+  type: 'doc';
+  version: 1;
+  content: AdfNode[];
+}
+
+export interface JiraSite { id: string; name: string; url: string }
+export interface JiraStatus {
+  available: boolean;
+  connected: boolean;
+  site?: JiraSite;
+  sites?: JiraSite[];
+  reason?: string;
+}
+export interface JiraField { id: string; name: string }
+export interface JiraPreview {
+  id: string;
+  issueKey: string;
+  issueUrl: string;
+  siteName: string;
+  fieldId: string;
+  fieldName: string;
+  currentPoints: number | null;
+  points: number;
+}
+export interface JiraResult {
+  status?: JiraStatus;
+  authorizeUrl?: string;
+  ticketId?: string;
+  fields?: JiraField[];
+  suggestions?: Array<{ key: string; summary: string }>;
+  preview?: JiraPreview;
+  written?: boolean;
+  uncertain?: boolean;
+}
+
+export type JiraClientMessage = { type: 'jira'; requestId: string } & (
+  | { action: 'status' | 'disconnect' }
+  | { action: 'connect'; returnUrl?: string }
+  | { action: 'suggest'; query: string }
+  | { action: 'selectSite'; siteId: string }
+  | { action: 'import'; input: string }
+  | { action: 'agree'; ticketId: string; points: number }
+  | { action: 'prepare'; ticketId: string; fieldId?: string }
+  | { action: 'confirm'; confirmationId: string }
+);
+export type JiraRequest = JiraClientMessage extends infer Message
+  ? Message extends JiraClientMessage ? Omit<Message, 'type' | 'requestId'> : never
+  : never;
+
 export interface RosterUser {
   id: string;
   name: string;
@@ -25,6 +83,10 @@ export interface TicketResult {
 export interface RoomTicket extends Ticket {
   id: string;
   result: TicketResult | null;
+  jira?: { cloudId: string; issueId: string; key: string; url: string };
+  descriptionAdf?: AdfDocument;
+  agreedEstimate?: number;
+  revision?: number;
 }
 
 export interface RoomState {
@@ -43,10 +105,13 @@ export interface RoomState {
 export type ServerMessage =
   | { type: 'welcome'; userId: string; token: string }
   | { type: 'replaced' }
+  | { type: 'jiraStatus'; status: JiraStatus }
+  | { type: 'jira'; requestId: string; ok: boolean; data?: JiraResult; error?: string }
   | RoomState
   | { type: 'error'; message: string };
 
 export type ClientMessage =
+  | JiraClientMessage
   | { type: 'vote'; value: string; round: number }
   | { type: 'reveal' }
   | { type: 'reset' }

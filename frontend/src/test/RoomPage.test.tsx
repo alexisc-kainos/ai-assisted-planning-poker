@@ -415,6 +415,7 @@ describe('RoomPage', () => {
       expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Login page'));
 
       expect(ws.sent).toEqual([
+        { type: 'jira', requestId: 'jira-1', action: 'status' },
         { type: 'addTicket', ticket: { type: 'story', title: 'Signup', description: 'With email' } },
         { type: 'selectTicket', ticketId: 'ticket-2' },
         {
@@ -514,6 +515,7 @@ describe('RoomPage', () => {
       await user.click(within(first).getByRole('radio', { name: 'Spike' }));
       await user.click(within(first).getByRole('button', { name: 'Save' }));
       expect(ws.sent).toEqual([
+        { type: 'jira', requestId: 'jira-1', action: 'status' },
         {
           type: 'editTicket',
           ticketId: 'ticket-1',
@@ -721,7 +723,10 @@ describe('RoomPage', () => {
       expect(screen.getByRole('button', { name: 'Add ticket' })).toBeInTheDocument();
 
       await userEvent.setup().click(screen.getByRole('switch', { name: 'Spectate' }));
-      expect(ws.sent).toEqual([{ type: 'setSpectating', spectating: false }]);
+      expect(ws.sent).toEqual([
+        { type: 'jira', requestId: 'jira-1', action: 'status' },
+        { type: 'setSpectating', spectating: false },
+      ]);
       ws.emit(roomState({}, { hostId: 'user-b' }));
       expect(screen.getByRole('button', { name: '5' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Reveal votes' })).toBeInTheDocument();
@@ -761,7 +766,7 @@ describe('RoomPage', () => {
 
     it('orders the host sidebar as team link, voting controls, room members and spectate toggle', async () => {
       await joinAsBob('user-b');
-      expect(sidebarBoxes()).toEqual(['Share this room', 'Voting controls', 'In the room (2)', 'Participation']);
+      expect(sidebarBoxes()).toEqual(['Share this room', 'Jira', 'Voting controls', 'In the room (2)', 'Participation']);
     });
 
     it('keeps the same sidebar order for participants, without voting controls', async () => {
@@ -930,6 +935,84 @@ describe('RoomPage', () => {
       render(<RoomPage roomId={ROOM} />);
 
       expect(screen.getByLabelText('Your name')).toBeInTheDocument();
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    });
+
+    it('rejoins as the same member in a new tab while the first tab is told to stand down', () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      markCreator(ROOM);
+      const fetchMock = mockRoomStatus({ exists: true, userCount: 1, capacity: 50, full: false });
+      render(<RoomPage roomId={ROOM} />);
+      const firstTab = FakeWebSocket.instances[0];
+      firstTab.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      firstTab.emit({ ...state, myVote: '5' });
+
+      const secondTab = render(<RoomPage roomId={ROOM} />);
+      expect(within(secondTab.container).queryByLabelText('Your name')).not.toBeInTheDocument();
+      const ws = FakeWebSocket.instances[1];
+      expect(Object.fromEntries(new URL(ws.url).searchParams)).toEqual({ room: ROOM, token: TOKEN });
+      firstTab.emit({ type: 'replaced' });
+      ws.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
+      ws.emit({ ...state, myVote: '5' });
+
+      expect(within(secondTab.container).getByRole('listitem')).toHaveTextContent('Alice (you)Host');
+      expect(within(secondTab.container).getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByText('This room was opened in another tab or window.')).toBeInTheDocument();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('waits until a background tab is shown before taking over the session', () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      try {
+        render(<RoomPage roomId={ROOM} />);
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        expect(FakeWebSocket.instances).toHaveLength(0);
+        expect(screen.queryByLabelText('Your name')).not.toBeInTheDocument();
+        expect(screen.getByRole('status')).toHaveTextContent('Reconnecting…');
+
+        hidden.mockReturnValue(false);
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+      } finally {
+        hidden.mockRestore();
+      }
+
+      expect(FakeWebSocket.instances).toHaveLength(1);
+      expect(Object.fromEntries(new URL(FakeWebSocket.instances[0].url).searchParams)).toEqual({
+        room: ROOM,
+        token: TOKEN,
+      });
+    });
+
+    it('does not connect from a prerendered page until it is opened', () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      Object.defineProperty(document, 'prerendering', { configurable: true, value: true });
+      try {
+        render(<RoomPage roomId={ROOM} />);
+        expect(FakeWebSocket.instances).toHaveLength(0);
+
+        Object.defineProperty(document, 'prerendering', { configurable: true, value: false });
+        act(() => document.dispatchEvent(new Event('prerenderingchange')));
+      } finally {
+        delete (document as { prerendering?: boolean }).prerendering;
+      }
+
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    });
+
+    it('stops waiting to rejoin once the page is closed', () => {
+      localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
+      const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      try {
+        const { unmount } = render(<RoomPage roomId={ROOM} />);
+        unmount();
+        hidden.mockReturnValue(false);
+        act(() => document.dispatchEvent(new Event('visibilitychange')));
+      } finally {
+        hidden.mockRestore();
+      }
+
       expect(FakeWebSocket.instances).toHaveLength(0);
     });
 

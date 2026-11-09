@@ -1,3 +1,9 @@
+export interface JiraConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
 export interface Config {
   port: number;
   maxRoomUsers: number;
@@ -10,6 +16,23 @@ export interface Config {
   roomKeepAwakeDurationMs: number;
   roomCloseGraceMs: number;
   renderExternalUrl?: string;
+  jira?: JiraConfig;
+}
+
+function readJiraConfig(env: NodeJS.ProcessEnv): JiraConfig | undefined {
+  const clientId = env.JIRA_OAUTH_CLIENT_ID?.trim();
+  const clientSecret = env.JIRA_OAUTH_CLIENT_SECRET?.trim();
+  const redirectUri = env.JIRA_OAUTH_REDIRECT_URI?.trim();
+  if (!clientId || !clientSecret || !redirectUri) return undefined;
+  try {
+    const url = new URL(redirectUri);
+    const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if ((url.protocol !== 'https:' && !(local && url.protocol === 'http:')) ||
+        url.username || url.password || url.search || url.hash || url.pathname !== '/jira/oauth/callback') return undefined;
+    return { clientId, clientSecret, redirectUri: url.href };
+  } catch {
+    return undefined;
+  }
 }
 
 function readInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -62,5 +85,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     roomKeepAwakeDurationMs: readPositiveInt(env, 'ROOM_KEEP_AWAKE_DURATION_MS', 90 * 60 * 1_000),
     roomCloseGraceMs: readInt(env, 'ROOM_CLOSE_GRACE_MS', 60_000),
     renderExternalUrl: readOptionalHttpUrl(env, 'RENDER_EXTERNAL_URL'),
+    jira: readJiraConfig(env),
   };
 }

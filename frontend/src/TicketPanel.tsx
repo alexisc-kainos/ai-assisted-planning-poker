@@ -2,6 +2,7 @@ import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'reac
 import type { RoomTicket, TicketFields, TicketType } from './types';
 import { MAX_TICKETS, ticketDescriptionError, ticketTitleError } from './validation';
 import { VoteResults } from './VoteResults';
+import { JiraDescription, JiraIssueLink } from './JiraDescription';
 
 export const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike' };
 
@@ -197,7 +198,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
         {active && <span className="badge voted">Active</span>}
         {ticket.result && <span className="badge waiting">Revealed</span>}
       </div>
-      {editing ? (
+      {editing && !ticket.jira ? (
         <>
           <TicketTypeOptions value={editType} onChange={setEditType} />
           {editType !== ticket.type && (
@@ -224,7 +225,10 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
           <p className="ticket-title">
             <strong>{ticket.title}</strong>
           </p>
-          {ticket.description && <p className="ticket-description">{ticket.description}</p>}
+          {ticket.jira && <JiraIssueLink url={ticket.jira.url}>{ticket.jira.key}</JiraIssueLink>}
+          {ticket.jira && ticket.descriptionAdf ? (
+            <JiraDescription document={ticket.descriptionAdf} issueUrl={ticket.jira.url} />
+          ) : ticket.description && <p className="ticket-description">{ticket.description}</p>}
         </div>
       )}
       <div className="vote-actions">
@@ -233,7 +237,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
             Start voting
           </button>
         )}
-        {isHost && !editing && (
+        {isHost && !editing && !ticket.jira && (
           <button type="button" onClick={startEditing}>
             Edit
           </button>

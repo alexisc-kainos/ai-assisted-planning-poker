@@ -1,4 +1,5 @@
 import { Mascot } from './Mascot';
+import { JiraDescription, JiraIssueLink } from './JiraDescription';
 import { TYPE_LABELS } from './TicketPanel';
 import type { RoomTicket } from './types';
 
@@ -18,7 +19,10 @@ export function CurrentTicket({ tickets, activeTicketId, isHost }: CurrentTicket
         <p className="now-voting">
           <strong>Now voting:</strong> {active.title}
         </p>
-        {active.description && <p className="now-voting-description">{active.description}</p>}
+        {active.jira && <JiraIssueLink url={active.jira.url}>{active.jira.key}</JiraIssueLink>}
+        {active.jira && active.descriptionAdf ? (
+          <JiraDescription document={active.descriptionAdf} issueUrl={active.jira.url} />
+        ) : active.description && <p className="now-voting-description">{active.description}</p>}
       </section>
     );
   }

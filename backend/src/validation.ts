@@ -7,6 +7,7 @@ export const MAX_VOTE_LENGTH = 64;
 export const MAX_TICKET_TITLE_LENGTH = 100;
 export const MAX_TICKET_DESCRIPTION_LENGTH = 500;
 export const MAX_TICKETS = 10;
+export const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13, 20] as const;
 const MAX_TICKET_ID_LENGTH = 64;
 
 const charLength = (value: string): number => Array.from(value).length;
@@ -75,9 +76,41 @@ export interface Ticket {
   description: string;
 }
 
+export interface AdfNode {
+  type: string;
+  text?: string;
+  attrs?: Record<string, unknown>;
+  marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
+  content?: AdfNode[];
+}
+
+export interface AdfDocument {
+  type: 'doc';
+  version: 1;
+  content: AdfNode[];
+}
+
+export interface JiraLink {
+  cloudId: string;
+  issueId: string;
+  key: string;
+  url: string;
+}
+
+export type JiraClientMessage =
+  | { type: 'jira'; requestId: string; action: 'status' | 'disconnect' }
+  | { type: 'jira'; requestId: string; action: 'connect'; returnUrl?: string }
+  | { type: 'jira'; requestId: string; action: 'suggest'; query: string }
+  | { type: 'jira'; requestId: string; action: 'selectSite'; siteId: string }
+  | { type: 'jira'; requestId: string; action: 'import'; input: string }
+  | { type: 'jira'; requestId: string; action: 'agree'; ticketId: string; points: number }
+  | { type: 'jira'; requestId: string; action: 'prepare'; ticketId: string; fieldId?: string }
+  | { type: 'jira'; requestId: string; action: 'confirm'; confirmationId: string };
+
 const isTicketType = (value: unknown): value is TicketType => value === 'story' || value === 'spike';
 
 export type ClientMessage =
+  | JiraClientMessage
   | { type: 'vote'; value: string; round: number }
   | { type: 'reveal' }
   | { type: 'reset' }
@@ -118,6 +151,43 @@ export function parseClientMessage(raw: string): ParseResult {
   }
   const message = data as Record<string, unknown>;
   switch (message.type) {
+    case 'jira': {
+      const { requestId, action } = message;
+      const invalid = { ok: false, error: 'Invalid Jira request' } as const;
+      if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(requestId)) return invalid;
+      const base = { type: 'jira', requestId } as const;
+      const bounded = (value: unknown, length: number): value is string =>
+        typeof value === 'string' && value.trim().length > 0 && value.length <= length;
+      if (action === 'status' || action === 'disconnect') {
+        return { ok: true, message: { ...base, action } };
+      }
+      if (action === 'connect' && (message.returnUrl === undefined || bounded(message.returnUrl, 2_048))) {
+        return { ok: true, message: { ...base, action,
+          ...(message.returnUrl === undefined ? {} : { returnUrl: message.returnUrl as string }) } };
+      }
+      if (action === 'suggest' && typeof message.query === 'string' && message.query.length <= 64 &&
+          /^[A-Z][A-Z0-9_]*-\d*$/i.test(message.query)) {
+        return { ok: true, message: { ...base, action, query: message.query.toUpperCase() } };
+      }
+      if (action === 'selectSite' && bounded(message.siteId, 128)) {
+        return { ok: true, message: { ...base, action, siteId: message.siteId } };
+      }
+      if (action === 'import' && bounded(message.input, 512)) {
+        return { ok: true, message: { ...base, action, input: message.input } };
+      }
+      if (action === 'confirm' && bounded(message.confirmationId, 64)) {
+        return { ok: true, message: { ...base, action, confirmationId: message.confirmationId } };
+      }
+      if (action === 'agree' && isTicketId(message.ticketId) &&
+          typeof message.points === 'number' && (STORY_POINT_VALUES as readonly number[]).includes(message.points)) {
+        return { ok: true, message: { ...base, action, ticketId: message.ticketId, points: message.points } };
+      }
+      if (action === 'prepare' && isTicketId(message.ticketId) &&
+          (message.fieldId === undefined || bounded(message.fieldId, 128))) {
+        return { ok: true, message: { ...base, action, ticketId: message.ticketId, fieldId: message.fieldId as string | undefined } };
+      }
+      return invalid;
+    }
     case 'vote': {
       const { value, round } = message;
       if (typeof value !== 'string') return { ok: false, error: 'Invalid vote message' };

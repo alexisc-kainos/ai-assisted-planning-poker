@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CurrentTicket } from './CurrentTicket';
 import { JoinForm } from './JoinForm';
+import { JiraPanel } from './JiraPanel';
 import { Mascot } from './Mascot';
 import { Roster } from './Roster';
 import { AddTicketForm, TicketPanel } from './TicketPanel';
@@ -54,6 +55,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
     removeTicket,
     selectTicket,
     setSpectating,
+    jiraStatus,
+    jiraRequest,
   } = useRoom(roomId);
   const url = joinUrl(roomId);
 
@@ -91,6 +94,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
         </div>
         <aside className="room-side" aria-label="Room">
           <CopyLink url={url} />
+          {isHost && <JiraPanel status={jiraStatus} state={state} request={jiraRequest} />}
           {isHost && (
             <section className="card" aria-labelledby="voting-controls-heading">
               <h2 id="voting-controls-heading">Voting controls</h2>
