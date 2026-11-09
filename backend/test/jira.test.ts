@@ -431,9 +431,11 @@ describe('Jira issue-key autocomplete', () => {
     const [input, init] = context.request.mock.calls[0];
     const url = new URL(String(input));
     expect(`${url.origin}${url.pathname}`).toBe(`https://api.atlassian.com/ex/jira/${site.id}/rest/api/3/issue/picker`);
+    const hasDigits = /-\d+$/.test(query);
     expect([...url.searchParams.entries()]).toEqual([
-      ['query', query.toUpperCase()], ['showSubTasks', 'false'],
+      ['showSubTasks', 'false'],
       ['currentJQL', `project = "${query.split('-')[0].toUpperCase()}" ORDER BY key ASC`],
+      ...(hasDigits ? [['query', query.toUpperCase()]] : []),
     ]);
     expect(init?.method ?? 'GET').toBe('GET');
     expect(init?.headers).toMatchObject({ Authorization: 'Bearer fixture-access-token' });

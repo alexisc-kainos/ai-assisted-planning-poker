@@ -314,9 +314,15 @@ export class JiraService {
     session.suggestionRequest = controller;
     try {
       const prefix = query.toUpperCase();
-      const project = prefix.slice(0, prefix.indexOf('-'));
-      const params = new URLSearchParams({ query: prefix, showSubTasks: 'false',
+      const dash = prefix.indexOf('-');
+      const project = prefix.slice(0, dash);
+      const digits = prefix.slice(dash + 1);
+      const params = new URLSearchParams({ showSubTasks: 'false',
         currentJQL: `project = "${project}" ORDER BY key ASC` });
+      // Jira's picker text-matches "query" against tokenised key/summary text; a bare "PROJ-"
+      // prefix with no digits yet fails that match even though currentJQL already scopes the
+      // project, so only pass query once the user has typed at least one digit.
+      if (digits) params.set('query', prefix);
       const response = await this.api(room, session, `/rest/api/3/issue/picker?${params}`, { signal: controller.signal });
       if (controller.signal.aborted || session.suggestionRequest !== controller) return { suggestions: [] };
       if (!record(response) || !Array.isArray(response.sections)) throw new Error('Jira returned invalid issue suggestions');
