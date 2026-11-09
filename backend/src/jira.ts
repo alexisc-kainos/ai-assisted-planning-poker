@@ -422,16 +422,18 @@ export class JiraService {
     const current = numericValue(await this.api(room, session, readPath), preview.fieldId);
     check();
     if (current !== preview.currentPoints) throw new Error('Jira points changed since the preview. Prepare and confirm the new values.');
+    let putSucceeded = false;
     try {
       await this.api(room, session, issuePath, {
         method: 'PUT', body: JSON.stringify({ fields: { [preview.fieldId]: preview.points } }),
       });
+      putSucceeded = true;
       const actual = numericValue(await this.api(room, session, readPath), preview.fieldId);
       check();
       if (actual !== preview.points) return { written: false, uncertain: true };
       return { written: true };
     } catch (error) {
-      if (error instanceof Error && /not permitted|not found|rate limiting/.test(error.message)) throw error;
+      if (!putSucceeded && error instanceof Error && /not permitted|not found|rate limiting/.test(error.message)) throw error;
       return { written: false, uncertain: true };
     }
   }
