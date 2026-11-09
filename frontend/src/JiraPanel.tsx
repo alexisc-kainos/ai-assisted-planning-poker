@@ -347,7 +347,7 @@ export function JiraPanel({ status, state, request }: { status: JiraStatus | nul
           if (room) returnUrl.searchParams.set('room', room);
           void run({ action: 'connect', returnUrl: returnUrl.href }, popup);
         }}>Connect Jira</button>}
-        {authorizeUrl && <a href={authorizeUrl} target="_blank" rel="noopener noreferrer" onClick={() => setAuthorizeUrl('')}>Continue Jira connection in a new tab</a>}
+        {authorizeUrl && <a href={authorizeUrl} target="_blank" rel="noopener noreferrer">Continue Jira connection in a new tab</a>}
         {!!status.sites?.length && <div className="field">
           <label htmlFor="jira-site">Jira site</label>
           <select id="jira-site" value={status.site?.id ?? ''} disabled={busy} onChange={(event) => {
