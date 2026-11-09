@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { JiraConfig } from './config.js';
 import type { Room, RoomTicket } from './rooms.js';
-import { STORY_POINT_VALUES, type AdfDocument, type AdfNode, type JiraClientMessage } from './validation.js';
+import { isTicketType, STORY_POINT_VALUES, type AdfDocument, type AdfNode, type JiraClientMessage } from './validation.js';
 
 export interface JiraSite { id: string; name: string; url: string }
 export interface JiraStatus {
@@ -346,7 +346,7 @@ export class JiraService {
     const fields = issue.fields;
     if (typeof fields.summary !== 'string' || !fields.summary.trim() || Array.from(fields.summary).length > 255) throw new Error('Jira summary is missing or exceeds 255 characters');
     const typeName = record(fields.issuetype) && typeof fields.issuetype.name === 'string' ? fields.issuetype.name.toLowerCase() : '';
-    if (typeName !== 'story' && typeName !== 'spike') throw new Error('This Jira issue type is not mapped. Only Story and Spike are supported.');
+    if (!isTicketType(typeName)) throw new Error('Unsupported ticket type. Only Story, Spike, Bug and Task are supported.');
     const descriptionAdf = validateJiraDescription(fields.description);
     this.valid(room, session);
     const ticket = room.importTicket(userId, {
@@ -361,7 +361,7 @@ export class JiraService {
 
   private linkedStory(room: Room, session: Session, ticketId: string, agreed = true): RoomTicket {
     const ticket = room.tickets.find((candidate) => candidate.id === ticketId);
-    if (!ticket?.jira || ticket.type !== 'story') throw new Error('Only linked stories support story-points write-back');
+    if (!ticket?.jira || ticket.type === 'spike') throw new Error('Only linked stories support story-points write-back');
     if (ticket.jira.cloudId !== session.site?.id) throw new Error('Reconnect to this ticket\'s Jira site before writing points');
     if (!ticket.result || room.activeTicketId !== ticket.id || !room.revealed) throw new Error('Reveal this story before writing points');
     if (agreed && (ticket.agreedEstimate === undefined || !(STORY_POINT_VALUES as readonly number[]).includes(ticket.agreedEstimate))) throw new Error('Choose and agree a numeric story-deck value first');

@@ -1,4 +1,4 @@
-export type TicketType = 'story' | 'spike';
+export type TicketType = 'story' | 'spike' | 'bug' | 'task';
 
 export interface AdfNode {
   type: string;

@@ -665,7 +665,7 @@ describe('Jira import contracts', () => {
     expect(context.writes()).toHaveLength(0);
   });
 
-  it.each(['Story', 'sToRy', 'Spike', 'SPIKE'])('maps %s explicitly and normalises null description', async (type) => {
+  it.each(['Story', 'sToRy', 'Spike', 'SPIKE', 'Bug', 'bUg', 'Task', 'TASK'])('maps %s explicitly and normalises null description', async (type) => {
     const context = fixture();
     await connected(context);
     context.state.issue.fields.issuetype.name = type;
@@ -674,11 +674,11 @@ describe('Jira import contracts', () => {
     expect(ticket.descriptionAdf).toEqual({ type: 'doc', version: 1, content: [] });
   });
 
-  it.each(['Bug', 'Task', 'Epic', ''])('rejects unmapped %s atomically', async (type) => {
+  it.each(['Epic', ''])('rejects unmapped %s atomically', async (type) => {
     const context = fixture();
     await connected(context);
     context.state.issue.fields.issuetype.name = type;
-    await expect(context.act('import', { input: 'TEAM-7' })).rejects.toThrow('Only Story and Spike are supported');
+    await expect(context.act('import', { input: 'TEAM-7' })).rejects.toThrow('Only Story, Spike, Bug and Task are supported');
     expect(context.room.tickets).toEqual([]);
   });
 
@@ -776,6 +776,20 @@ describe('explicit agreed estimates and guarded Jira writes', () => {
       await expect(context.act(action, { ticketId: ticket.id, points: 8 })).rejects.toThrow('Only linked stories');
     }
     expect(context.writes()).toHaveLength(0);
+  });
+
+  it.each(['bug', 'task'] as const)('allows agreement and preparation for linked %s tickets', async (type) => {
+    const context = fixture();
+    await connected(context);
+    context.state.issue.fields.issuetype.name = type;
+    const ticket = await imported(context);
+    context.room.selectTicket(context.host.id, ticket.id);
+    context.room.vote(context.host.id, '8', context.room.round);
+    context.room.reveal(context.host.id);
+    await expect(context.act('agree', { ticketId: ticket.id, points: 8 })).resolves.toEqual({ ticketId: ticket.id });
+    expect(ticket.agreedEstimate).toBe(8);
+    const { preview } = await context.act('prepare', { ticketId: ticket.id });
+    expect(preview).toMatchObject({ fieldId: 'customfield_10123', points: 8 });
   });
 
   it.each(['missing', 'read-only', 'wrong-schema', 'unrelated-name'] as const)('rejects %s points metadata without changing estimates', async (kind) => {

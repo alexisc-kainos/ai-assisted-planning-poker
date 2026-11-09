@@ -23,6 +23,14 @@
   --waiting-bg: #f3e6cf;
   --spectating-fg: #44406a;
   --spectating-bg: #e6e4f0;
+  --type-story-fg: #1f4f5a;
+  --type-story-bg: #dcecee;
+  --type-spike-fg: #6b4a12;
+  --type-spike-bg: #f3e6cf;
+  --type-bug-fg: #8f2424;
+  --type-bug-bg: #f9e1e1;
+  --type-task-fg: #1f5a45;
+  --type-task-bg: #dfeee6;
   --radius: 20px;
   --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --sans: 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -477,6 +485,26 @@ textarea[aria-invalid='true'] {
 .badge.away {
   background: var(--badge-bg);
   color: var(--muted);
+}
+
+.badge.type-story {
+  background: var(--type-story-bg);
+  color: var(--type-story-fg);
+}
+
+.badge.type-spike {
+  background: var(--type-spike-bg);
+  color: var(--type-spike-fg);
+}
+
+.badge.type-bug {
+  background: var(--type-bug-bg);
+  color: var(--type-bug-fg);
+}
+
+.badge.type-task {
+  background: var(--type-task-bg);
+  color: var(--type-task-fg);
 }
 
 .mascot {

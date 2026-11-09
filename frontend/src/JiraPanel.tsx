@@ -383,7 +383,7 @@ export function JiraPanel({ status, state, request, estimateFeedback, setEstimat
       {error && <p className="notice error" role="alert">{error}</p>}
       {estimateFeedback && <p className={estimateFeedback.error ? 'notice error' : 'notice'}
         role={estimateFeedback.error ? 'alert' : 'status'}>{estimateFeedback.message}</p>}
-      {status?.available && status.connected && status.site && !busy && state.revealed && ticket?.jira && ticket.type === 'story' && ticket.result && (
+      {status?.available && status.connected && status.site && !busy && state.revealed && ticket?.jira && ticket.type !== 'spike' && ticket.result && (
         <JiraEstimate key={estimateContext} ticket={ticket} request={(action) => estimateRequest(ticket, action)} />
       )}
     </section>

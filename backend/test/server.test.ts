@@ -984,6 +984,18 @@ describe('ticket list', () => {
     expect(reset.tickets[0].result.votes).toMatchObject({ [guestId]: '3' });
   });
 
+  it.each(['bug', 'task'] as const)('adds a %s ticket and stores its revealed points votes', async (type) => {
+    const { host, guest, guestId } = await twoUsers();
+    const added = await act(host, [guest], addTicket('Fix broken link', type));
+    const [ticket] = added.tickets;
+    expect(ticket).toMatchObject({ type, title: 'Fix broken link', description: '', result: null });
+
+    await act(host, [guest], { type: 'selectTicket', ticketId: ticket.id });
+    await act(guest, [host], vote('13', round));
+    const revealed = await act(host, [guest], { type: 'reveal' });
+    expect(revealed.tickets[0].result.votes).toMatchObject({ [guestId]: '13' });
+  });
+
   it('changing the active ticket type clears votes, reveal and its result, and starts a new round', async () => {
     const { host, guest, guestId } = await twoUsers();
     const [first] = await addTickets(host, guest, 'One');

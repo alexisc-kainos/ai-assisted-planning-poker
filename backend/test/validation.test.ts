@@ -160,6 +160,13 @@ describe('parseClientMessage', () => {
     });
   });
 
+  it.each(['bug', 'task'])('accepts addTicket with type %s', (type) => {
+    expect(parseClientMessage(addTicket({ type, title: 'Fix login', description: '' }))).toEqual({
+      ok: true,
+      message: { type: 'addTicket', ticket: { type, title: 'Fix login', description: '' } },
+    });
+  });
+
   const edit = { ticketId: 'ticket-1', title: 'Login', description: '' };
 
   it.each([
@@ -191,7 +198,7 @@ describe('parseClientMessage', () => {
     });
   });
 
-  it.each(['story', 'spike'])('accepts editTicket with ticketType %s', (ticketType) => {
+  it.each(['story', 'spike', 'bug', 'task'])('accepts editTicket with ticketType %s', (ticketType) => {
     const raw = JSON.stringify({ type: 'editTicket', ...edit, ticketType });
     expect(parseClientMessage(raw)).toEqual({
       ok: true,

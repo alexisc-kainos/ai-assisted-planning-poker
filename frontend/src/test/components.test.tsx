@@ -286,6 +286,8 @@ describe('TicketPanel', () => {
     expect(screen.getByRole('heading', { name: 'Add tickets', level: 2 })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: 'Story' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'Spike' })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: 'Bug' })).toBeEnabled();
+    expect(screen.getByRole('radio', { name: 'Task' })).toBeEnabled();
 
     const user = userEvent.setup();
     const submit = screen.getByRole('button', { name: 'Add ticket' });
@@ -312,6 +314,23 @@ describe('TicketPanel', () => {
     await user.type(screen.getByLabelText(TITLE), 'Investigate SSO');
     await user.click(screen.getByRole('button', { name: 'Add ticket' }));
     expect(onAdd).toHaveBeenCalledWith({ title: 'Investigate SSO', description: '' }, 'spike');
+  });
+
+  it.each([['Bug', 'bug'], ['Task', 'task']] as const)('lets the host add a %s ticket', async (label, type) => {
+    const { onAdd } = renderPanel();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('radio', { name: label }));
+    expect(screen.getByRole('radio', { name: label })).toBeChecked();
+    await user.type(screen.getByLabelText(TITLE), 'Fix broken link');
+    await user.click(screen.getByRole('button', { name: 'Add ticket' }));
+    expect(onAdd).toHaveBeenCalledWith({ title: 'Fix broken link', description: '' }, type);
+  });
+
+  it.each([
+    ['story', 'type-story'], ['spike', 'type-spike'], ['bug', 'type-bug'], ['task', 'type-task'],
+  ] as const)('shows a distinct badge class for %s tickets', (type, className) => {
+    renderPanel({ tickets: [ticket('t1', 'One', null, type)], activeTicketId: null });
+    expect(screen.getByRole('listitem').querySelector('.badge')).toHaveClass(className);
   });
 
   it('keeps the add draft until the server broadcasts the new ticket', async () => {
