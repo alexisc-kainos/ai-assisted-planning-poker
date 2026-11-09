@@ -233,7 +233,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
       )}
       <div className="vote-actions">
         {isHost && !active && (
-          <button type="button" className="primary" onClick={() => onSelect(ticket.id)}>
+          <button type="button" className="accent" onClick={() => onSelect(ticket.id)}>
             Start voting
           </button>
         )}

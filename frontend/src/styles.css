@@ -1,7 +1,8 @@
 /*
  * Riverside Lounge theme (PPK-35), tokens from the PPK-34 concept A mockup.
  * Contrast (WCAG 2.2): --ink on --bg 11.9:1, on --surface 12.9:1; --muted on --bg 6.0:1;
- * white on --teal 6.2:1; --teal on --bg 5.4:1; --field border vs white 4.4:1; --focus vs --bg 7.5:1.
+ * white on --teal 6.2:1; --teal on --bg 5.4:1; --field border vs white 4.4:1; --focus vs --bg 7.5:1;
+ * white on --accent 5.0:1.
  */
 :root {
   --bg: #f4efe6;
@@ -11,6 +12,8 @@
   --teal: #2f6b62;
   --teal-dark: #24564f;
   --teal-soft: #e3ece7;
+  --accent: #b5531d;
+  --accent-dark: #8f4216;
   --line: #d6cfc2;
   --field: #6f7b79;
   --focus: #1d4f7a;
@@ -352,6 +355,18 @@ button.primary {
 button.primary:hover:not(:disabled) {
   background: var(--teal-dark);
   border-color: var(--teal-dark);
+}
+
+/* Amber accent for the key voting actions, so they stand out from other primary buttons. */
+button.accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.accent:hover:not(:disabled) {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
 }
 
 button:disabled {
