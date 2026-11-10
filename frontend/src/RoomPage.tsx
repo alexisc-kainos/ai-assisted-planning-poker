@@ -4,7 +4,7 @@ import { JoinForm } from './JoinForm';
 import { JiraPanel, type JiraEstimateFeedback } from './JiraPanel';
 import { Mascot } from './Mascot';
 import { Roster } from './Roster';
-import { AddTicketForm, TicketPanel } from './TicketPanel';
+import { TicketPanel } from './TicketPanel';
 import { VoteDeck } from './VoteDeck';
 import { VoteResults } from './VoteResults';
 import { joinUrl } from './room';
@@ -81,7 +81,6 @@ export function RoomPage({ roomId }: { roomId: string }) {
             </p>
           )}
           <CurrentTicket tickets={state.tickets} activeTicketId={state.activeTicketId} isHost={isHost} />
-          {isHost && <AddTicketForm tickets={state.tickets} onAdd={addTicket} />}
           {state.revealed && (
             <VoteResults
               users={state.users.filter((user) => !user.spectating || votes[user.id] !== undefined)}
@@ -130,6 +129,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
             tickets={state.tickets}
             activeTicketId={state.activeTicketId}
             isHost={isHost}
+            onAdd={addTicket}
             onEdit={editTicket}
             onRemove={removeTicket}
             onSelect={selectTicket}

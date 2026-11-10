@@ -10,6 +10,7 @@ interface TicketPanelProps {
   tickets: RoomTicket[];
   activeTicketId: string | null;
   isHost: boolean;
+  onAdd: (fields: TicketFields, type: TicketType) => void;
   onEdit: (ticketId: string, fields: TicketFields, type: TicketType) => void;
   onRemove: (ticketId: string) => void;
   onSelect: (ticketId: string) => void;
@@ -157,7 +158,7 @@ export function AddTicketForm({ tickets, onAdd }: AddTicketFormProps) {
   );
 }
 
-interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTicketId'> {
+interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTicketId' | 'onAdd'> {
   ticket: RoomTicket;
   active: boolean;
 }
@@ -272,11 +273,11 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
   );
 }
 
-export function TicketPanel({ tickets, activeTicketId, isHost, ...itemProps }: TicketPanelProps) {
+export function TicketPanel({ tickets, activeTicketId, isHost, onAdd, ...itemProps }: TicketPanelProps) {
   return (
     <section className="card tickets-card" aria-labelledby="ticket-heading">
       <h2 id="ticket-heading">Tickets</h2>
-      {tickets.length > 0 && (
+      {tickets.length > 0 ? (
         <ol className="ticket-list" aria-label="Tickets">
           {tickets.map((ticket) => (
             <TicketItem
@@ -288,7 +289,10 @@ export function TicketPanel({ tickets, activeTicketId, isHost, ...itemProps }: T
             />
           ))}
         </ol>
+      ) : (
+        <p className="hint">No tickets added yet</p>
       )}
+      {isHost && <AddTicketForm tickets={tickets} onAdd={onAdd} />}
     </section>
   );
 }

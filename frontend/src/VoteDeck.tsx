@@ -11,7 +11,7 @@ interface VoteDeckProps {
 export function VoteDeck({ selected, ticketType = 'story', disabled = false, onVote }: VoteDeckProps) {
   const spike = ticketType === 'spike';
   return (
-    <section className="card" aria-labelledby="deck-heading">
+    <section className="card vote-deck" aria-labelledby="deck-heading">
       <h2 id="deck-heading">{spike ? 'Your vote (days)' : 'Your vote'}</h2>
       <div className="deck" role="group" aria-labelledby="deck-heading">
         {deckFor(ticketType).map((value) => (

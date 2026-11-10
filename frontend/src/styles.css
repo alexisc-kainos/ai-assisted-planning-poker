@@ -815,6 +815,13 @@ textarea[aria-invalid='true'] {
 
 /* ---------- Deck ---------- */
 
+/* Align with the Tickets heading's 1.5rem inset. */
+.vote-deck > h2,
+.vote-deck > .deck,
+.vote-deck > .hint {
+  padding-left: 1.5rem;
+}
+
 .deck {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -986,11 +993,22 @@ textarea[aria-invalid='true'] {
 
 /* ---------- Tickets ---------- */
 
+/* Align with the Add tickets card's own 1.5rem padding below. */
+.tickets-card > h2,
+.tickets-card > .hint {
+  padding-left: 1.5rem;
+}
+
 .ticket-form,
 .add-tickets {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+/* Matches the 2.25rem row-gap above the Tickets heading (1.5rem card padding + this margin). */
+.tickets-card > .add-tickets {
+  margin-top: 0.75rem;
 }
 
 .add-tickets h2 {
@@ -1050,7 +1068,7 @@ textarea[aria-invalid='true'] {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  padding: 1rem 1rem 1rem 1.15rem;
+  padding: 1.5rem 1rem 1.5rem 1.15rem;
   border-top: 1px solid var(--line);
   border-left: 4px solid transparent;
 }
