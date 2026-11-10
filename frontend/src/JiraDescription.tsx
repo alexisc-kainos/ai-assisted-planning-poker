@@ -83,5 +83,5 @@ export function JiraDescription({ document, issueUrl }: { document: AdfDocument;
         return <><JiraIssueLink url={issueUrl}>View attachment or embedded content in Jira</JiraIssueLink>{' '}{node.text}{children}</>;
     }
   };
-  return <div className="jira-description">{render(document)}</div>;
+  return <div className="jira-description" tabIndex={0} role="region" aria-label="Jira description">{render(document)}</div>;
 }
