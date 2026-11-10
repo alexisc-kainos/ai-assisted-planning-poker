@@ -658,8 +658,8 @@ describe('RoomPage', () => {
       type: 'state',
       hostId: 'user-a',
       revealed: false,
-      tickets: [],
-      activeTicketId: null,
+      tickets: [{ id: 'ticket-1', type: 'story', title: 'Login page', description: '', result: null }],
+      activeTicketId: 'ticket-1',
       round: 0,
       users: [
         { id: 'user-a', name: 'Alice', hasVoted: false, spectating: spectating['user-a'] ?? false },
@@ -730,6 +730,17 @@ describe('RoomPage', () => {
       ws.emit(roomState({}, { hostId: 'user-b' }));
       expect(screen.getByRole('button', { name: '5' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Reveal votes' })).toBeInTheDocument();
+    });
+
+    it('hides voting cards until a ticket is active, with no placeholder in their place', async () => {
+      const ws = await joinAsBob();
+      ws.emit(roomState({}, { tickets: [], activeTicketId: null }));
+
+      expect(screen.queryByRole('button', { name: '5' })).not.toBeInTheDocument();
+      expect(screen.queryByText("You're spectating — switch off to vote.")).not.toBeInTheDocument();
+
+      ws.emit(roomState({}));
+      expect(screen.getByRole('button', { name: '5' })).toBeInTheDocument();
     });
   });
 
@@ -881,6 +892,11 @@ describe('RoomPage', () => {
       votes: null,
       myVote: null,
     };
+    const votingState = {
+      ...state,
+      tickets: [{ id: 'ticket-1', type: 'story', title: 'Login page', description: '', result: null }],
+      activeTicketId: 'ticket-1',
+    };
 
     it('rejoins automatically without showing the join form', () => {
       localStorage.setItem(`ppk:session:${ROOM}`, TOKEN);
@@ -945,7 +961,7 @@ describe('RoomPage', () => {
       render(<RoomPage roomId={ROOM} />);
       const firstTab = FakeWebSocket.instances[0];
       firstTab.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
-      firstTab.emit({ ...state, myVote: '5' });
+      firstTab.emit({ ...votingState, myVote: '5' });
 
       const secondTab = render(<RoomPage roomId={ROOM} />);
       expect(within(secondTab.container).queryByLabelText('Your name')).not.toBeInTheDocument();
@@ -953,9 +969,9 @@ describe('RoomPage', () => {
       expect(Object.fromEntries(new URL(ws.url).searchParams)).toEqual({ room: ROOM, token: TOKEN });
       firstTab.emit({ type: 'replaced' });
       ws.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
-      ws.emit({ ...state, myVote: '5' });
+      ws.emit({ ...votingState, myVote: '5' });
 
-      expect(within(secondTab.container).getByRole('listitem')).toHaveTextContent('Alice (you)Host');
+      expect(within(secondTab.container).getAllByRole('listitem')[0]).toHaveTextContent('Alice (you)Host');
       expect(within(secondTab.container).getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true');
       expect(screen.getByText('This room was opened in another tab or window.')).toBeInTheDocument();
       expect(fetchMock).not.toHaveBeenCalled();
@@ -1066,9 +1082,9 @@ describe('RoomPage', () => {
       await userEvent.setup().click(screen.getByRole('button', { name: 'Use this tab instead' }));
       const resumed = FakeWebSocket.instances[1];
       resumed.emit({ type: 'welcome', userId: 'user-a', token: TOKEN });
-      resumed.emit({ ...state, myVote: '5' });
+      resumed.emit({ ...votingState, myVote: '5' });
       ws.emit({ type: 'replaced' });
-      ws.emit({ ...state, myVote: '8' });
+      ws.emit({ ...votingState, myVote: '8' });
       ws.serverClose(4002);
 
       expect(screen.getByRole('button', { name: '5' })).toHaveAttribute('aria-pressed', 'true');

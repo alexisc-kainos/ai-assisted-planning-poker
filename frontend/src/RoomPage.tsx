@@ -89,7 +89,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
               ticketType={ticketType}
             />
           )}
-          {!spectating && (
+          {!spectating && state.activeTicketId && (
             <VoteDeck
               selected={state.myVote}
               ticketType={ticketType}
