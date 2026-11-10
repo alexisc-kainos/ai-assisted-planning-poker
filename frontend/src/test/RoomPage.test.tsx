@@ -786,11 +786,11 @@ describe('RoomPage', () => {
       expect(screen.queryByRole('region', { name: 'Add tickets' })).not.toBeInTheDocument();
     });
 
-    it('places Add tickets directly beneath the room-ready message for the host', async () => {
+    it('places Add tickets below the ticket list, within the Tickets section', async () => {
       await joinAsBob('user-b');
-      const hero = screen.getByRole('region', { name: 'The room is ready' });
-      const addTickets = screen.getByRole('region', { name: 'Add tickets' });
-      expect(hero.nextElementSibling).toBe(addTickets);
+      const ticketsSection = screen.getByRole('region', { name: 'Tickets' });
+      const addTickets = within(ticketsSection).getByRole('region', { name: 'Add tickets' });
+      expect(within(ticketsSection).getByText('No tickets added yet').nextElementSibling).toBe(addTickets);
       expect(within(addTickets).getByRole('button', { name: 'Add ticket' })).toHaveClass('primary');
     });
   });

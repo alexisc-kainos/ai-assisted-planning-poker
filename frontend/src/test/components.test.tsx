@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CurrentTicket } from '../CurrentTicket';
 import { JoinForm } from '../JoinForm';
 import { Roster } from '../Roster';
-import { AddTicketForm, TicketPanel } from '../TicketPanel';
+import { TicketPanel } from '../TicketPanel';
 import type { RoomTicket } from '../types';
 import { VoteDeck } from '../VoteDeck';
 import { VoteResults } from '../VoteResults';
@@ -266,16 +266,9 @@ describe('TicketPanel', () => {
 
   const renderPanel = (props: Partial<Parameters<typeof TicketPanel>[0]> = {}) => {
     const handlers = { onAdd: vi.fn(), onEdit: vi.fn(), onRemove: vi.fn(), onSelect: vi.fn() };
-    const { onAdd, ...itemHandlers } = handlers;
-    const panel = (next: Partial<Parameters<typeof TicketPanel>[0]>) => {
-      const tickets = next.tickets ?? [];
-      return (
-        <>
-          {next.isHost !== false && <AddTicketForm tickets={tickets} onAdd={onAdd} />}
-          <TicketPanel activeTicketId={null} isHost {...itemHandlers} {...next} tickets={tickets} />
-        </>
-      );
-    };
+    const panel = (next: Partial<Parameters<typeof TicketPanel>[0]>) => (
+      <TicketPanel activeTicketId={null} isHost {...handlers} {...next} tickets={next.tickets ?? []} />
+    );
     const { rerender } = render(panel(props));
     return { ...handlers, update: (next: Partial<Parameters<typeof TicketPanel>[0]>) => rerender(panel(next)) };
   };
@@ -481,9 +474,16 @@ describe('TicketPanel', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('shows no ticket list when there are no tickets yet', () => {
+  it('shows an empty-state message to all participants when there are no tickets yet', () => {
     renderPanel({ isHost: false });
     expect(screen.queryByRole('list')).not.toBeInTheDocument();
+    expect(screen.getByText('No tickets added yet')).toBeInTheDocument();
+  });
+
+  it('replaces the empty-state message with the list once tickets exist', () => {
+    renderPanel({ tickets: [ticket('t1', 'One')] });
+    expect(screen.queryByText('No tickets added yet')).not.toBeInTheDocument();
+    expect(screen.getByRole('list')).toBeInTheDocument();
   });
 
   it('marks revealed tickets and toggles their stored results', async () => {
