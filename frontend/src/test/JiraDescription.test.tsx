@@ -26,6 +26,7 @@ describe('JiraDescription', () => {
       { type: 'panel', content: [{ type: 'mention', attrs: { text: '@Alex' } }] },
     ] };
     const { container } = render(<JiraDescription document={document} issueUrl={issueUrl} />);
+    expect(screen.getByRole('region', { name: 'Jira description' })).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('heading', { name: 'Acceptance' })).toBeInTheDocument();
     expect(screen.getByText('Important').closest('strong')).not.toBeNull();
     expect(screen.getByRole('link', { name: 'Reference' })).toHaveAttribute('rel', 'noopener noreferrer');
