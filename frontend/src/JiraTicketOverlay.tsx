@@ -63,7 +63,7 @@ function EditConfirmDialog({ preview, busy, onConfirm, onCancel, returnFocus }: 
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.preventDefault(); onCancel(); }
           if (event.key !== 'Tab') return;
-          const controls = dialog.current?.querySelectorAll<HTMLElement>('a[href],button');
+          const controls = dialog.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled)');
           if (!controls?.length) return;
           const first = controls[0];
           const last = controls[controls.length - 1];
