@@ -164,6 +164,10 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
     setFeedback(null);
     try {
       const changedFields = extraFields.filter((field) => (draftExtraFields[field.id] ?? '').trim() !== adfToPlainText(field.adf).trim());
+      // Match the backend's MAX_JIRA_EXTRA_FIELDS limit.
+      if (changedFields.length > 10) {
+        throw new Error('You can save up to 10 custom fields at once. Revert some field changes before saving, then edit those fields separately.');
+      }
       const result = await request({
         action: 'prepareEdit', ticketId: ticket.id, title: draftTitle.trim(), description: draftDescription.trim(),
         ...(changedFields.length ? { extraFields: Object.fromEntries(changedFields.map((field) => [field.id, (draftExtraFields[field.id] ?? '').trim()])) } : {}),
