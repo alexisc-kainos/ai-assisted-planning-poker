@@ -353,7 +353,7 @@ export class JiraService {
     }
     this.reconcile(room);
     const session = this.sessions.get(room);
-    if (!session?.accessToken) throw new Error('Connect Jira first. If access expired, reauthorise to continue.');
+    if (!session?.accessToken) throw new Error('Connect Jira first. If your access has expired, reauthorise to continue.');
     if (message.action === 'suggest') {
       if (!session.site) throw new Error('Select an authorised Jira site first');
       return this.suggest(room, session, message.query);

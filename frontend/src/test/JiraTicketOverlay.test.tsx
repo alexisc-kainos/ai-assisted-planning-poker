@@ -152,11 +152,54 @@ describe('JiraTicketOverlay', () => {
   it('renders any discovered description/acceptance field once reported by the live fetch', async () => {
     const request = vi.fn<(request: unknown) => Promise<JiraResult>>().mockResolvedValue({
       detail: { title: 'Login page', descriptionAdf: adfOf('Original description'),
-        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: adfOf('Given, When, Then') }] },
+        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: adfOf('Given a valid login, When the user submits, Then they see the dashboard') }] },
     });
     render(<JiraTicketOverlay ticket={linkedTicket()} isHost jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
     expect(await screen.findByRole('heading', { name: 'Acceptance Criteria' })).toBeInTheDocument();
-    expect(screen.getByText('Given, When, Then')).toBeInTheDocument();
+    expect(screen.getByText('Given a valid login, When the user submits, Then they see the dashboard')).toBeInTheDocument();
+  });
+
+  it('hides an unfilled Given/When/Then placeholder field in the view but keeps it editable', async () => {
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>().mockResolvedValue({
+      detail: { title: 'Login page', descriptionAdf: adfOf('Original description'),
+        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: adfOf('Given ...\nWhen ...\nThen ...') }] },
+    });
+    render(<JiraTicketOverlay ticket={linkedTicket()} isHost jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
+    await screen.findByText('Original description');
+    expect(screen.queryByRole('heading', { name: 'Acceptance Criteria' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Given/)).not.toBeInTheDocument();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Acceptance Criteria')).toHaveValue('Given ...\nWhen ...\nThen ...');
+  });
+
+  it('still shows a partially filled Given/When/Then field that has real detail', async () => {
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>().mockResolvedValue({
+      detail: { title: 'Login page', descriptionAdf: adfOf('Original description'),
+        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: adfOf('Given ...\nWhen a user logs in\nThen ...') }] },
+    });
+    render(<JiraTicketOverlay ticket={linkedTicket()} isHost jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
+    expect(await screen.findByRole('heading', { name: 'Acceptance Criteria' })).toBeInTheDocument();
+    expect(screen.getByText(/a user logs in/)).toBeInTheDocument();
+  });
+
+  it('hides the main description in view mode when it is just an unfilled Given/When/Then template', async () => {
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>().mockResolvedValue({
+      detail: { title: 'Login page', descriptionAdf: adfOf('Given ...\nWhen ...\nThen ...') },
+    });
+    render(<JiraTicketOverlay ticket={linkedTicket()} isHost jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
+    await screen.findByRole('button', { name: 'Edit' });
+    expect(screen.queryByText(/Given/)).not.toBeInTheDocument();
+  });
+
+  it('keeps the Edit button outside the scrollable content area', async () => {
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>().mockResolvedValue({
+      detail: { title: 'Login page', descriptionAdf: adfOf('Original description') },
+    });
+    render(<JiraTicketOverlay ticket={linkedTicket()} isHost jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
+    await screen.findByText('Original description');
+    const editButton = screen.getByRole('button', { name: 'Edit' });
+    expect(editButton.closest('.ticket-overlay-content')).toBeNull();
   });
 
   it('never shows edit controls for a ticket that is not linked to Jira', () => {

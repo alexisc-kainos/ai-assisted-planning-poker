@@ -392,7 +392,7 @@ Failures retain local imported tickets, vote results and agreed estimates. Repre
 |---|---|
 | Non-facilitator | `Only the facilitator can use Jira` |
 | Configuration absent/invalid | `Jira is not configured for this server` |
-| No token | `Connect Jira first. If access expired, reauthorise to continue.` |
+| No token | `Connect Jira first. If your access has expired, reauthorise to continue.` |
 | Token expired / upstream 401 | `Jira authorisation expired. Reauthorise to continue.` |
 | No selected site | `Select an authorised Jira site first` |
 | Concurrent Jira operation | `A Jira operation is already in progress. Wait for its result.` |
