@@ -191,7 +191,9 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
         setFeedback({ error: true, message: 'Jira update outcome is uncertain. Check the issue in Jira before trying again.' });
       } else if (result.written === true) {
         setTitle(draftTitle);
-        setDescriptionAdf(plainTextToAdf(draftDescription));
+        if (preview.changes.some((change) => change.fieldId === 'description')) {
+          setDescriptionAdf(plainTextToAdf(draftDescription));
+        }
         setExtraFields(extraFields.filter((field) => (draftExtraFields[field.id] ?? '').trim()).map((field) =>
           (draftExtraFields[field.id] ?? '').trim() === adfToPlainText(field.adf).trim()
             ? field : { ...field, adf: plainTextToAdf(draftExtraFields[field.id] ?? '') }));
