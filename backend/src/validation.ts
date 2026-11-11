@@ -8,6 +8,9 @@ export const MAX_TICKET_TITLE_LENGTH = 100;
 export const MAX_TICKET_DESCRIPTION_LENGTH = 500;
 export const MAX_TICKETS = 10;
 export const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13, 20] as const;
+export const MAX_JIRA_TITLE_LENGTH = 255;
+export const MAX_JIRA_EDIT_TEXT_LENGTH = 50_000;
+export const MAX_JIRA_EXTRA_FIELDS = 10;
 const MAX_TICKET_ID_LENGTH = 64;
 
 const charLength = (value: string): number => Array.from(value).length;
@@ -105,7 +108,10 @@ export type JiraClientMessage =
   | { type: 'jira'; requestId: string; action: 'import'; input: string }
   | { type: 'jira'; requestId: string; action: 'agree'; ticketId: string; points: number }
   | { type: 'jira'; requestId: string; action: 'prepare'; ticketId: string; fieldId?: string }
-  | { type: 'jira'; requestId: string; action: 'confirm'; confirmationId: string };
+  | { type: 'jira'; requestId: string; action: 'confirm'; confirmationId: string }
+  | { type: 'jira'; requestId: string; action: 'details'; ticketId: string }
+  | { type: 'jira'; requestId: string; action: 'prepareEdit'; ticketId: string; title: string; description: string; extraFields?: Record<string, string> }
+  | { type: 'jira'; requestId: string; action: 'confirmEdit'; confirmationId: string };
 
 export const isTicketType = (value: unknown): value is TicketType =>
   value === 'story' || value === 'spike' || value === 'bug' || value === 'task';
@@ -134,6 +140,19 @@ function parseDescription(description: unknown): string | null {
   if (typeof description !== 'string') return null;
   const trimmed = description.trim();
   return charLength(trimmed) <= MAX_TICKET_DESCRIPTION_LENGTH ? trimmed : null;
+}
+
+function parseJiraTitle(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const length = charLength(trimmed);
+  return length >= 1 && length <= MAX_JIRA_TITLE_LENGTH && !/[\r\n\u2028\u2029]/.test(trimmed) ? trimmed : null;
+}
+
+function parseJiraText(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return charLength(trimmed) <= MAX_JIRA_EDIT_TEXT_LENGTH ? trimmed : null;
 }
 
 function isTicketId(value: unknown): value is string {
@@ -186,6 +205,31 @@ export function parseClientMessage(raw: string): ParseResult {
       if (action === 'prepare' && isTicketId(message.ticketId) &&
           (message.fieldId === undefined || bounded(message.fieldId, 128))) {
         return { ok: true, message: { ...base, action, ticketId: message.ticketId, fieldId: message.fieldId as string | undefined } };
+      }
+      if (action === 'details' && isTicketId(message.ticketId)) {
+        return { ok: true, message: { ...base, action, ticketId: message.ticketId } };
+      }
+      if (action === 'confirmEdit' && bounded(message.confirmationId, 64)) {
+        return { ok: true, message: { ...base, action, confirmationId: message.confirmationId } };
+      }
+      if (action === 'prepareEdit' && isTicketId(message.ticketId)) {
+        const title = parseJiraTitle(message.title);
+        const description = parseJiraText(message.description);
+        if (title === null || description === null) return invalid;
+        if (message.extraFields === undefined) {
+          return { ok: true, message: { ...base, action, ticketId: message.ticketId, title, description } };
+        }
+        if (typeof message.extraFields !== 'object' || message.extraFields === null || Array.isArray(message.extraFields)) return invalid;
+        const entries = Object.entries(message.extraFields as Record<string, unknown>);
+        if (entries.length > MAX_JIRA_EXTRA_FIELDS) return invalid;
+        const extraFields: Record<string, string> = {};
+        for (const [id, value] of entries) {
+          if (!/^[A-Za-z0-9_]{1,64}$/.test(id)) return invalid;
+          const parsed = parseJiraText(value);
+          if (parsed === null) return invalid;
+          extraFields[id] = parsed;
+        }
+        return { ok: true, message: { ...base, action, ticketId: message.ticketId, title, description, extraFields } };
       }
       return invalid;
     }

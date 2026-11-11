@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CurrentTicket } from './CurrentTicket';
 import { JoinForm } from './JoinForm';
 import { JiraPanel, type JiraEstimateFeedback } from './JiraPanel';
+import { JiraTicketOverlay } from './JiraTicketOverlay';
 import { Mascot } from './Mascot';
 import { Roster } from './Roster';
 import { TicketPanel } from './TicketPanel';
@@ -38,6 +39,7 @@ function CopyLink({ url }: { url: string }) {
 
 export function RoomPage({ roomId }: { roomId: string }) {
   const [jiraFeedbackByMember, setJiraFeedbackByMember] = useState<Record<string, JiraEstimateFeedback | null>>({});
+  const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const {
     status,
     error,
@@ -80,7 +82,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
               {error}
             </p>
           )}
-          <CurrentTicket tickets={state.tickets} activeTicketId={state.activeTicketId} isHost={isHost} />
+          <CurrentTicket tickets={state.tickets} activeTicketId={state.activeTicketId} isHost={isHost} onExpand={setExpandedTicketId} />
           {state.revealed && (
             <VoteResults
               users={state.users.filter((user) => !user.spectating || votes[user.id] !== undefined)}
@@ -133,9 +135,22 @@ export function RoomPage({ roomId }: { roomId: string }) {
             onEdit={editTicket}
             onRemove={removeTicket}
             onSelect={selectTicket}
+            onExpand={setExpandedTicketId}
           />
         </div>
         {activeTicketIndex >= 0 && <Mascot className="mascot room-mascot" ticketIndex={activeTicketIndex} />}
+        {expandedTicketId && (() => {
+          const expanded = state.tickets.find((ticket) => ticket.id === expandedTicketId);
+          return expanded ? (
+            <JiraTicketOverlay
+              ticket={expanded}
+              isHost={isHost}
+              jiraStatus={jiraStatus}
+              request={jiraRequest}
+              onClose={() => setExpandedTicketId(null)}
+            />
+          ) : null;
+        })()}
       </div>
     );
   }

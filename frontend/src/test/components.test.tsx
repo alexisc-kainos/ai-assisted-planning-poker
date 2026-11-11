@@ -265,13 +265,41 @@ describe('TicketPanel', () => {
   const DESCRIPTION = 'Ticket description (optional)';
 
   const renderPanel = (props: Partial<Parameters<typeof TicketPanel>[0]> = {}) => {
-    const handlers = { onAdd: vi.fn(), onEdit: vi.fn(), onRemove: vi.fn(), onSelect: vi.fn() };
+    const handlers = { onAdd: vi.fn(), onEdit: vi.fn(), onRemove: vi.fn(), onSelect: vi.fn(), onExpand: vi.fn() };
     const panel = (next: Partial<Parameters<typeof TicketPanel>[0]>) => (
       <TicketPanel activeTicketId={null} isHost {...handlers} {...next} tickets={next.tickets ?? []} />
     );
     const { rerender } = render(panel(props));
     return { ...handlers, update: (next: Partial<Parameters<typeof TicketPanel>[0]>) => rerender(panel(next)) };
   };
+
+  it('shows populated Jira text fields in the ticket preview', () => {
+    const jiraTicket: RoomTicket = {
+      ...ticket('t1', 'Imported'),
+      jira: { cloudId: 'cloud', issueId: '1', key: 'TEAM-1', url: 'https://team.atlassian.net/browse/TEAM-1' },
+      descriptionAdf: { type: 'doc', version: 1, content: [] },
+      extraFields: [
+        { id: 'customfield_1', name: 'Description (Project_Name)', adf: { type: 'doc', version: 1, content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Project details' }] },
+        ] } },
+        { id: 'customfield_2', name: 'Empty description', adf: { type: 'doc', version: 1, content: [] } },
+        { id: 'customfield_3', name: 'Customer value', adf: { type: 'doc', version: 1, content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Unrelated text' }] },
+        ] } },
+        { id: 'customfield_4', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1, content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'Criteria text' }] },
+        ] } },
+      ],
+    };
+    renderPanel({ tickets: [jiraTicket] });
+    expect(screen.getByText('Description (Project_Name)')).toBeInTheDocument();
+    expect(screen.getByText('Project details')).toBeInTheDocument();
+    expect(screen.queryByText('Empty description')).not.toBeInTheDocument();
+    expect(screen.queryByText('Customer value')).not.toBeInTheDocument();
+    expect(screen.queryByText('Unrelated text')).not.toBeInTheDocument();
+    expect(screen.queryByText('Acceptance Criteria')).not.toBeInTheDocument();
+    expect(screen.queryByText('Criteria text')).not.toBeInTheDocument();
+  });
 
   it('lets the host add a story ticket by default', async () => {
     const { onAdd } = renderPanel();
@@ -471,7 +499,8 @@ describe('TicketPanel', () => {
     expect(screen.getByText('<i>As a user</i>')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Expand' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
   it('shows an empty-state message to all participants when there are no tickets yet', () => {
@@ -522,41 +551,49 @@ describe('CurrentTicket', () => {
   });
 
   it('shows the active ticket with its type', () => {
-    render(<CurrentTicket tickets={[ticket('t1', 'Login page', 'spike')]} activeTicketId="t1" isHost={false} />);
+    render(<CurrentTicket tickets={[ticket('t1', 'Login page', 'spike')]} activeTicketId="t1" isHost={false} onExpand={vi.fn()} />);
     expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
     expect(screen.getByRole('region', { name: 'Current ticket' })).toHaveTextContent('Spike');
     expect(screen.getByRole('region', { name: 'Current ticket' }).querySelectorAll('p')).toHaveLength(1);
   });
 
-  it('shows the active ticket description under its title', () => {
+  it('does not show the ticket description inline, only its title and Jira key', () => {
     render(
       <CurrentTicket
         tickets={[ticket('t1', 'Login page', 'story', 'As a user\nI log in')]}
         activeTicketId="t1"
         isHost={false}
+        onExpand={vi.fn()}
       />,
     );
-    expect(screen.getByText(/As a user/)).toHaveTextContent('As a user I log in');
+    expect(screen.queryByText(/As a user/)).not.toBeInTheDocument();
+  });
+
+  it('lets any participant expand the active ticket for details', async () => {
+    const onExpand = vi.fn();
+    render(<CurrentTicket tickets={[ticket('t1', 'Login page')]} activeTicketId="t1" isHost={false} onExpand={onExpand} />);
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Expand' }));
+    expect(onExpand).toHaveBeenCalledWith('t1');
   });
 
   it('tells a non-host when the host has not chosen a ticket', () => {
-    render(<CurrentTicket tickets={[ticket('t1', '<b>Login</b>')]} activeTicketId={null} isHost={false} />);
+    render(<CurrentTicket tickets={[ticket('t1', '<b>Login</b>')]} activeTicketId={null} isHost={false} onExpand={vi.fn()} />);
     expect(screen.getByRole('heading', { name: 'The room is ready' })).toBeInTheDocument();
     expect(screen.getByText('Waiting for the host to choose a ticket.')).toBeInTheDocument();
   });
 
   it('tells a host when no ticket is active', () => {
-    render(<CurrentTicket tickets={[ticket('t1', 'One')]} activeTicketId={null} isHost />);
+    render(<CurrentTicket tickets={[ticket('t1', 'One')]} activeTicketId={null} isHost onExpand={vi.fn()} />);
     expect(screen.getByText('No ticket is active. Choose one to start voting.')).toBeInTheDocument();
   });
 
   it('tells other participants when there are no tickets yet', () => {
-    render(<CurrentTicket tickets={[]} activeTicketId={null} isHost={false} />);
+    render(<CurrentTicket tickets={[]} activeTicketId={null} isHost={false} onExpand={vi.fn()} />);
     expect(screen.getByText('Waiting for the host to add a ticket.')).toBeInTheDocument();
   });
 
   it('shows a host no hint when there are no tickets yet', () => {
-    render(<CurrentTicket tickets={[]} activeTicketId={null} isHost />);
+    render(<CurrentTicket tickets={[]} activeTicketId={null} isHost onExpand={vi.fn()} />);
     expect(screen.queryByText(/Waiting for the host|No ticket is active/)).not.toBeInTheDocument();
   });
 });

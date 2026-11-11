@@ -337,7 +337,6 @@ describe('RoomPage', () => {
       const ws = await joinAs('user-b');
       const user = userEvent.setup();
       expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
-      expect(within(screen.getByRole('region', { name: 'Current ticket' })).getByText('As a user I log in')).toBeInTheDocument();
       expect(document.querySelector('.room-layout > .room-mascot')).toHaveAttribute(
         'src', expect.stringContaining('riverside.jpg'),
       );
@@ -441,7 +440,6 @@ describe('RoomPage', () => {
         'Logout',
       ]);
       expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
-      expect(screen.getByRole('region', { name: 'Current ticket' })).toHaveTextContent('As a user I log in');
       for (const name of ['Start voting', 'Edit', 'Remove', 'Add ticket']) {
         expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
       }
@@ -449,6 +447,20 @@ describe('RoomPage', () => {
       ws.emit({ ...roomState(null), tickets: [roomState(null).tickets[1]], activeTicketId: null });
       expect(screen.getByText('Waiting for the host to choose a ticket.')).toBeInTheDocument();
       expect(screen.getByRole('list', { name: 'Tickets' })).not.toHaveTextContent('Active');
+    });
+
+    it('lets a non-host expand and close the active ticket overlay purely as local view state', async () => {
+      const ws = await joinAs('user-b');
+      const user = userEvent.setup();
+      const sentBefore = ws.sent.length;
+
+      await user.click(within(screen.getByRole('region', { name: 'Current ticket' })).getByRole('button', { name: 'Expand' }));
+      expect(await screen.findByRole('dialog', { name: 'Login page' })).toBeInTheDocument();
+      expect(ws.sent).toHaveLength(sentBefore);
+
+      await user.click(screen.getByRole('button', { name: 'Close ticket details' }));
+      expect(screen.queryByRole('dialog', { name: 'Login page' })).not.toBeInTheDocument();
+      expect(ws.sent).toHaveLength(sentBefore);
     });
 
     it('lets anyone view a previous ticket result after switching away', async () => {

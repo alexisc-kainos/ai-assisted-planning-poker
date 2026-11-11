@@ -1,4 +1,6 @@
 import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomPage } from '../RoomPage';
 import { JIRA_REQUEST_TIMEOUT_MS, useRoom } from '../useRoom';
@@ -77,6 +79,32 @@ describe('Jira room workflow', () => {
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+  it('opens the ticket overlay, coalesces StrictMode\'s duplicate detail fetches, and renders the fetched description with no busy-lock error', async () => {
+    render(
+      <StrictMode>
+        <RoomPage roomId={ROOM} />
+      </StrictMode>,
+    );
+    // StrictMode double-invokes the connection effect too, so target the surviving (last) socket.
+    const ws = Socket.instances.at(-1)!;
+    ws.emit({ type: 'welcome', userId: 'host', token: 'session-token' });
+    ws.emit(roomState);
+    await reply(ws, 'status', { status: connected });
+
+    const user = userEvent.setup();
+    await user.click(within(screen.getByRole('region', { name: 'Current ticket' })).getByRole('button', { name: 'Expand' }));
+    expect(await screen.findByRole('dialog', { name: linked.title })).toBeInTheDocument();
+
+    const detailsRequests = ws.requests('details');
+    expect(detailsRequests).toHaveLength(1);
+    await reply(ws, 'details', { detail: { title: linked.title, descriptionAdf: {
+      type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Freshly fetched description' }] }],
+    } } });
+
+    expect(await screen.findByText('Freshly fetched description')).toBeInTheDocument();
+    expect(screen.queryByText(/already in progress/)).not.toBeInTheDocument();
+  });
+
   it('requests availability only after the current member is known to be host', async () => {
     render(<RoomPage roomId={ROOM} />);
     const ws = Socket.instances[0];
@@ -94,7 +122,7 @@ describe('Jira room workflow', () => {
     expect(ws.requests()).toEqual([]);
     expect(screen.queryByRole('region', { name: 'Jira' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: 'PPK-1' })).toHaveLength(2);
-    expect(screen.getAllByText('Rich description')).toHaveLength(2);
+    expect(screen.getAllByText('Rich description')).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
   });
@@ -572,7 +600,7 @@ describe('Jira room workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Disconnect Jira' }));
     await reply(ws, 'disconnect', { status: { available: true, connected: false } });
     expect(screen.getByText('Not connected')).toBeInTheDocument();
-    expect(screen.getAllByText('Rich description')).toHaveLength(2);
+    expect(screen.getAllByText('Rich description')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Show results' })).toBeInTheDocument();
   });
 

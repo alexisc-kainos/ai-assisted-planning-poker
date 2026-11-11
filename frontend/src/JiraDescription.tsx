@@ -1,6 +1,14 @@
 import { Fragment, type ReactNode } from 'react';
 import type { AdfDocument, AdfNode } from './types';
 
+export function hasJiraText(node: AdfNode): boolean {
+  return !!node.text?.trim() || (node.content?.some(hasJiraText) ?? false);
+}
+
+export function isRelevantJiraField(name: string): boolean {
+  return /description/i.test(name) || /^acceptance criteria$/i.test(name);
+}
+
 export function safeJiraUrl(value: unknown, mailto = false): string | undefined {
   if (typeof value !== 'string') return undefined;
   try {

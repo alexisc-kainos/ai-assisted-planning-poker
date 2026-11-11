@@ -185,6 +185,86 @@
   overflow-wrap: anywhere;
 }
 
+.expand-ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.ticket-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 45%);
+}
+
+.ticket-overlay {
+  width: 80vw;
+  max-width: 80vw;
+  height: 80vh;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ticket-overlay-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ticket-overlay-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.ticket-overlay > .ticket-form {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ticket-overlay-content > .jira-description {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.ticket-overlay-content section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ticket-overlay-content section .jira-description {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.ticket-overlay-edit {
+  align-self: flex-end;
+}
+
+.jira-edit-change {
+  margin-bottom: 0.75rem;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -1081,6 +1161,7 @@ textarea[aria-invalid='true'] {
 .ticket-badges {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.3rem;
 }
 

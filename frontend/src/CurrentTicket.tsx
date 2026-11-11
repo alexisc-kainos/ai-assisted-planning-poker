@@ -1,28 +1,29 @@
 import { Mascot } from './Mascot';
-import { JiraDescription, JiraIssueLink } from './JiraDescription';
-import { TYPE_LABELS } from './TicketPanel';
+import { JiraIssueLink } from './JiraDescription';
+import { ExpandTicketButton, TYPE_LABELS } from './TicketPanel';
 import type { RoomTicket } from './types';
 
 interface CurrentTicketProps {
   tickets: RoomTicket[];
   activeTicketId: string | null;
   isHost: boolean;
+  onExpand: (ticketId: string) => void;
 }
 
-export function CurrentTicket({ tickets, activeTicketId, isHost }: CurrentTicketProps) {
+export function CurrentTicket({ tickets, activeTicketId, isHost, onExpand }: CurrentTicketProps) {
   const active = tickets.find((ticket) => ticket.id === activeTicketId);
 
   if (active) {
     return (
       <section className="current-ticket" aria-label="Current ticket">
-        <span className="badge">{TYPE_LABELS[active.type]}</span>
+        <div className="ticket-badges">
+          <span className="badge">{TYPE_LABELS[active.type]}</span>
+          <ExpandTicketButton onExpand={() => onExpand(active.id)} />
+        </div>
         <p className="now-voting">
           <strong>Now voting:</strong> {active.title}
         </p>
         {active.jira && <JiraIssueLink url={active.jira.url}>{active.jira.key}</JiraIssueLink>}
-        {active.jira && active.descriptionAdf ? (
-          <JiraDescription document={active.descriptionAdf} issueUrl={active.jira.url} />
-        ) : active.description && <p className="now-voting-description">{active.description}</p>}
       </section>
     );
   }

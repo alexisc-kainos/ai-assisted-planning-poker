@@ -23,6 +23,20 @@ export interface JiraStatus {
   reason?: string;
 }
 export interface JiraField { id: string; name: string }
+export interface JiraExtraField { id: string; name: string; adf: AdfDocument }
+export interface JiraEditChange { fieldId: string; fieldName: string; from: string; to: string }
+export interface JiraEditPreview {
+  id: string;
+  issueKey: string;
+  issueUrl: string;
+  siteName: string;
+  changes: JiraEditChange[];
+}
+export interface JiraTicketDetail {
+  title: string;
+  descriptionAdf: AdfDocument;
+  extraFields?: JiraExtraField[];
+}
 export interface JiraPreview {
   id: string;
   issueKey: string;
@@ -42,6 +56,8 @@ export interface JiraResult {
   preview?: JiraPreview;
   written?: boolean;
   uncertain?: boolean;
+  detail?: JiraTicketDetail;
+  editPreview?: JiraEditPreview;
 }
 
 export type JiraClientMessage = { type: 'jira'; requestId: string } & (
@@ -53,6 +69,9 @@ export type JiraClientMessage = { type: 'jira'; requestId: string } & (
   | { action: 'agree'; ticketId: string; points: number }
   | { action: 'prepare'; ticketId: string; fieldId?: string }
   | { action: 'confirm'; confirmationId: string }
+  | { action: 'details'; ticketId: string }
+  | { action: 'prepareEdit'; ticketId: string; title: string; description: string; extraFields?: Record<string, string> }
+  | { action: 'confirmEdit'; confirmationId: string }
 );
 export type JiraRequest = JiraClientMessage extends infer Message
   ? Message extends JiraClientMessage ? Omit<Message, 'type' | 'requestId'> : never
@@ -85,6 +104,7 @@ export interface RoomTicket extends Ticket {
   result: TicketResult | null;
   jira?: { cloudId: string; issueId: string; key: string; url: string };
   descriptionAdf?: AdfDocument;
+  extraFields?: JiraExtraField[];
   agreedEstimate?: number;
   revision?: number;
 }
