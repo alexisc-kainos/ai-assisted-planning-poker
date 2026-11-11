@@ -24,6 +24,7 @@ export interface RoomTicket extends Ticket {
   result: TicketResult | null;
   jira?: JiraLink;
   descriptionAdf?: AdfDocument;
+  extraFields?: Array<{ id: string; name: string; adf: AdfDocument }>;
   agreedEstimate?: number;
   revision?: number;
 }
@@ -203,12 +204,22 @@ export class Room {
     return null;
   }
 
-  importTicket(userId: string, ticket: Ticket & { jira: JiraLink; descriptionAdf: AdfDocument }): RoomTicket {
+  importTicket(userId: string, ticket: Ticket & { jira: JiraLink; descriptionAdf: AdfDocument; extraFields?: RoomTicket['extraFields'] }): RoomTicket {
     if (this.tickets.some((existing) => existing.jira?.cloudId === ticket.jira.cloudId &&
         existing.jira.issueId === ticket.jira.issueId)) throw new Error('This Jira issue is already in the room');
     const error = this.addTicket(userId, ticket);
     if (error) throw new Error(error);
     return this.tickets[this.tickets.length - 1];
+  }
+
+  /** Applies a fresh Jira fetch or write-back result to a linked ticket. */
+  applyJiraFieldUpdate(ticketId: string, updates: { title?: string; descriptionAdf?: AdfDocument; extraFields?: Array<{ id: string; name: string; adf: AdfDocument }> }): void {
+    const ticket = this.tickets.find((existing) => existing.id === ticketId);
+    if (!ticket?.jira) return;
+    if (updates.title !== undefined) ticket.title = updates.title;
+    if (updates.descriptionAdf !== undefined) ticket.descriptionAdf = updates.descriptionAdf;
+    ticket.extraFields = updates.extraFields;
+    ticket.revision = (ticket.revision ?? 0) + 1;
   }
 
   agreeEstimate(userId: string, ticketId: string, points: number): string | null {

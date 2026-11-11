@@ -6,7 +6,7 @@ import type { Config } from './config.js';
 import { KeepAwake, type KeepAwakeLifecycle } from './keepAwake.js';
 import { JiraService } from './jira.js';
 import { Room, type Member } from './rooms.js';
-import { isValidRoomId, parseClientMessage, parseConnectParams, type ConnectParams } from './validation.js';
+import { isValidRoomId, MAX_JIRA_EDIT_MESSAGE_BYTES, parseClientMessage, parseConnectParams, type ConnectParams } from './validation.js';
 
 interface Connection {
   room: Room;
@@ -45,7 +45,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
   const roomSockets = new Map<string, Map<string, WebSocket>>();
   const connections = new Map<WebSocket, Connection>();
   const closeTimers = new Map<string, NodeJS.Timeout>();
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_JIRA_EDIT_MESSAGE_BYTES });
   const keepAwake =
     keepAwakeLifecycle ?? new KeepAwake(config.renderExternalUrl, config.roomKeepAwakeDurationMs);
   let shuttingDown = false;
@@ -90,7 +90,7 @@ export function createAppServer(config: Config, keepAwakeLifecycle?: KeepAwakeLi
           if (connections.get(ws) === conn) {
             send(ws, { type: 'jira', requestId: message.requestId, ok: true, data: result });
           }
-          if (message.action === 'import' || message.action === 'agree') broadcast(conn.room);
+          if (message.action === 'import' || message.action === 'agree' || message.action === 'details' || message.action === 'confirmEdit') broadcast(conn.room);
         }).catch((failure: unknown) => {
           if (connections.get(ws) !== conn) return;
           send(ws, { type: 'jira', requestId: message.requestId, ok: false,

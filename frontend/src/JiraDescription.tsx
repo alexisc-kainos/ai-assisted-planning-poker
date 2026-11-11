@@ -1,6 +1,24 @@
 import { Fragment, type ReactNode } from 'react';
 import type { AdfDocument, AdfNode } from './types';
 
+export function hasJiraText(node: AdfNode): boolean {
+  const label = node.type === 'mention' ? node.attrs?.text : node.type === 'emoji' ? node.attrs?.text ?? node.attrs?.shortName : undefined;
+  return !!node.text?.trim() || (typeof label === 'string' && !!label.trim()) || (node.content?.some(hasJiraText) ?? false);
+}
+
+export function hasRenderableJiraContent(node: AdfNode): boolean {
+  if (hasJiraText(node)) return true;
+  if (['hardBreak', 'rule', 'media', 'mediaSingle', 'mediaGroup', 'inlineCard', 'blockCard', 'embedCard'].includes(node.type)) return true;
+  if (['text', 'doc', 'paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock', 'table', 'tableRow', 'tableHeader', 'tableCell', 'panel'].includes(node.type)) {
+    return node.content?.some(hasRenderableJiraContent) ?? false;
+  }
+  return true;
+}
+
+export function isRelevantJiraField(name: string): boolean {
+  return /description/i.test(name) || /^acceptance criteria$/i.test(name);
+}
+
 export function safeJiraUrl(value: unknown, mailto = false): string | undefined {
   if (typeof value !== 'string') return undefined;
   try {

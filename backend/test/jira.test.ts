@@ -71,6 +71,8 @@ function fixture() {
     fields: [{ id: 'customfield_10123', name: 'Story Points', schema: { type: 'number' } }],
     editable: { customfield_10123: { operations: ['set'] } } as Record<string, { operations: string[] }>,
     points: 3 as number | null,
+    extraFieldValues: {} as Record<string, unknown>,
+    missingFields: [] as string[],
     expiresIn: 3600,
   };
   const request = vi.fn<typeof fetch>(async (input, init) => {
@@ -85,11 +87,28 @@ function fixture() {
     if (url.pathname.endsWith('/field')) return jsonResponse(state.fields);
     if (url.pathname.endsWith('/editmeta')) return jsonResponse({ fields: state.editable });
     if (init?.method === 'PUT') {
-      state.points = JSON.parse(String(init.body)).fields.customfield_10123 as number;
+      const body = JSON.parse(String(init.body)).fields as Record<string, unknown>;
+      if ('customfield_10123' in body) state.points = body.customfield_10123 as number;
+      if ('summary' in body) state.issue.fields.summary = body.summary as string;
+      if ('description' in body) state.issue.fields.description = body.description;
+      for (const [key, value] of Object.entries(body)) {
+        if (key === 'customfield_10123' || key === 'summary' || key === 'description') continue;
+        state.extraFieldValues[key] = value;
+      }
       return new Response(null, { status: 204 });
     }
-    if (url.searchParams.get('fields') === 'summary,description,issuetype') return jsonResponse(state.issue);
-    if (url.pathname.endsWith('/issue/10001')) return jsonResponse({ fields: { customfield_10123: state.points } });
+    const fieldsParam = url.searchParams.get('fields');
+    if (fieldsParam === 'summary,description,issuetype') return jsonResponse(state.issue);
+    if (fieldsParam && /^customfield_\d+$/.test(fieldsParam)) return jsonResponse({ fields: { [fieldsParam]: state.points } });
+    if (fieldsParam?.startsWith('summary,description')) {
+      const extraIds = fieldsParam.split(',').slice(2);
+      const fields: Record<string, unknown> = { summary: state.issue.fields.summary, description: state.issue.fields.description };
+      for (const id of extraIds) {
+        if (state.missingFields.includes(id)) continue;
+        fields[id] = state.extraFieldValues[id] ?? null;
+      }
+      return jsonResponse({ fields });
+    }
     throw new Error('Unexpected upstream route');
   });
   const service = new JiraService(jiraConfig, changed, request, ['https://frontend.example', 'http://localhost:5173']);
@@ -155,13 +174,15 @@ async function agreed(context: ReturnType<typeof fixture>) {
 }
 
 describe('room-scoped Jira authorisation', () => {
-  it.each(['status', 'connect', 'disconnect', 'selectSite', 'import', 'suggest', 'agree', 'prepare', 'confirm'] as const)(
+  it.each(['status', 'connect', 'disconnect', 'selectSite', 'import', 'suggest', 'agree', 'prepare', 'confirm',
+    'details', 'prepareEdit', 'confirmEdit'] as const)(
     'denies %s to members, foreign-room hosts and unknown identities before any upstream call', async (action) => {
       const context = fixture();
       const foreign = new Room('foreign-room').add('Foreign facilitator');
       for (const userId of [context.member.id, foreign.id, 'spoofed-user']) {
         await expect(context.service.action(context.room, userId, message(action, {
           siteId: site.id, input: 'TEAM-7', query: 'AL-', ticketId: 'ticket', points: 8, confirmationId: 'confirmation',
+          title: 'Title', description: 'Description',
         }))).rejects.toThrow('Only the facilitator can use Jira');
       }
       expect(context.request).not.toHaveBeenCalled();
@@ -940,6 +961,310 @@ describe('explicit agreed estimates and guarded Jira writes', () => {
     );
     expect(ticket).toEqual(before);
     expect(context.writes()).toHaveLength(0);
+  });
+});
+
+describe('ticket overlay: live details and dynamic multi-field write-back', () => {
+  const acField = { id: 'customfield_20001', name: 'Acceptance Criteria', schema: { type: 'string' } };
+
+  async function linkedTicket(context: ReturnType<typeof fixture>) {
+    await connected(context);
+    return imported(context);
+  }
+
+  it('fetches and caches the description and any populated plain-text field', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.editable.customfield_20001 = { operations: ['set'] };
+    context.state.issue.fields.description = { type: 'doc', version: 1, content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Rich description' }] },
+    ] };
+    context.state.extraFieldValues.customfield_20001 = 'Given, When, Then';
+    const ticket = await linkedTicket(context);
+    expect(ticket.extraFields?.[0]).toMatchObject({ id: 'customfield_20001', name: 'Acceptance Criteria' });
+    const result = await context.act('details', { ticketId: ticket.id });
+    expect(result.detail).toEqual({
+      title: 'Imported story',
+      descriptionAdf: context.state.issue.fields.description,
+      extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Given, When, Then' }] }] } }],
+    });
+    expect(ticket.extraFields).toEqual(result.detail?.extraFields);
+    expect(ticket.descriptionAdf).toEqual(result.detail?.descriptionAdf);
+  });
+
+  it('preserves mention and emoji labels in description and custom-field text', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.editable.customfield_20001 = { operations: ['set'] };
+    const adf = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [
+      { type: 'mention', attrs: { text: '@Alex' } },
+      { type: 'text', text: ' ' },
+      { type: 'emoji', attrs: { shortName: ':rocket:' } },
+    ] }] };
+    context.state.issue.fields.description = adf;
+    context.state.extraFieldValues.customfield_20001 = adf;
+    const ticket = await linkedTicket(context);
+
+    const result = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: '@Alex :rocket: updated',
+      extraFields: { customfield_20001: '@Alex :rocket: updated' },
+    });
+
+    expect(result.editPreview?.changes).toEqual([
+      { fieldId: 'description', fieldName: 'Description', from: '@Alex :rocket:', to: '@Alex :rocket: updated' },
+      { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: '@Alex :rocket:', to: '@Alex :rocket: updated' },
+    ]);
+  });
+
+  it('displays a matching field even when it is not on the issue edit screen, but rejects editing it', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.extraFieldValues.customfield_20001 = 'Given, When, Then';
+    const ticket = await linkedTicket(context);
+    const result = await context.act('details', { ticketId: ticket.id });
+    expect(result.detail?.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Given, When, Then' }] }] } }]);
+    expect(ticket.extraFields).toEqual(result.detail?.extraFields);
+    await expect(context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: '', extraFields: { customfield_20001: 'Changed' },
+    })).rejects.toThrow('One of the submitted fields is not editable on this issue');
+  });
+
+  it('omits fields from the detail payload when none are discovered or none have a value', async () => {
+    const context = fixture();
+    const ticket = await linkedTicket(context);
+    const result = await context.act('details', { ticketId: ticket.id });
+    expect(result.detail?.extraFields).toBeUndefined();
+    expect(ticket.extraFields).toBeUndefined();
+  });
+
+  it('still fetches other discovered fields when one is entirely omitted from the Jira issue response', async () => {
+    const context = fixture();
+    const dspField = { id: 'customfield_40001', name: 'Description (DSP)', schema: { type: 'string' } };
+    context.state.fields.push(acField, dspField);
+    context.state.extraFieldValues.customfield_20001 = 'Given, When, Then';
+    context.state.missingFields.push('customfield_40001');
+    const ticket = await linkedTicket(context);
+    const result = await context.act('details', { ticketId: ticket.id });
+    expect(result.detail?.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Given, When, Then' }] }] } }]);
+    expect(ticket.extraFields).toEqual(result.detail?.extraFields);
+  });
+
+  it('discovers only populated description and acceptance criteria fields, case-insensitively', async () => {
+    const context = fixture();
+    context.state.fields.push(
+      acField,
+      { id: 'customfield_40001', name: 'Description (DSP)', schema: { type: 'string' } },
+      { id: 'customfield_40002', name: 'Team ACCEPTANCE CRITERIA', schema: { type: 'string' } },
+      { id: 'customfield_40003', name: 'acceptance criteria', schema: { type: 'string' } },
+      { id: 'customfield_40004', name: 'Acceptance Criteria - Story', schema: { type: 'string' } },
+      { id: 'customfield_noise', name: 'Customer value', schema: { type: 'string' } },
+      { id: 'customfield_unset', name: 'Description (Empty)', schema: { type: 'string' } },
+    );
+    context.state.extraFieldValues.customfield_20001 = 'Given, When, Then';
+    context.state.extraFieldValues.customfield_40001 = 'Some team-specific detail';
+    context.state.extraFieldValues.customfield_40002 = 'Team criteria';
+    context.state.extraFieldValues.customfield_40003 = 'Exact criteria';
+    context.state.extraFieldValues.customfield_40004 = 'Story criteria';
+    context.state.extraFieldValues.customfield_noise = 'Unrelated field also with a value';
+    const ticket = await linkedTicket(context);
+    expect(ticket.extraFields?.map((field) => field.id)).toEqual(['customfield_40001', 'customfield_20001', 'customfield_40003']);
+    const result = await context.act('details', { ticketId: ticket.id });
+    expect(result.detail?.extraFields?.map((field) => field.id)).toEqual(
+      ['customfield_40001', 'customfield_20001', 'customfield_40003'],
+    );
+  });
+
+  it('finds populated description fields after the first ten empty text fields', async () => {
+    const context = fixture();
+    for (let index = 0; index < 10; index++) {
+      context.state.fields.push({ id: `customfield_1000${index}`, name: `Empty description ${index}`, schema: { type: 'string' } });
+    }
+    context.state.fields.push({ id: 'customfield_40001', name: 'Description (Project_Name)', schema: { type: 'string' } });
+    context.state.extraFieldValues.customfield_40001 = 'Project description';
+    const ticket = await linkedTicket(context);
+    const result = await context.act('details', { ticketId: ticket.id });
+    expect(result.detail?.extraFields?.map((field) => field.name)).toEqual(['Description (Project_Name)']);
+  });
+
+  it('imports all populated matching fields across batches and omits empty values', async () => {
+    const context = fixture();
+    for (let index = 0; index < 45; index++) {
+      const id = `customfield_${String(index).padStart(5, '0')}`;
+      context.state.fields.push({ id, name: `Description ${index}`, schema: { type: 'string' } });
+      context.state.extraFieldValues[id] = index < 12 || index === 44 ? `Value ${index}` : '  ';
+    }
+    context.state.fields.push({ id: 'customfield_empty', name: 'Empty rich text description', schema: { type: 'string' } });
+    context.state.extraFieldValues.customfield_empty = { type: 'doc', version: 1, content: [
+      { type: 'paragraph', content: [{ type: 'text', text: '  ' }] },
+    ] };
+    const ticket = await linkedTicket(context);
+    expect(ticket.extraFields).toHaveLength(13);
+    expect(ticket.extraFields?.at(-1)?.name).toBe('Description 44');
+    expect(context.room.snapshot(context.member.id).tickets[0].extraFields).toEqual(ticket.extraFields);
+    expect((await context.act('details', { ticketId: ticket.id })).detail?.extraFields).toEqual(ticket.extraFields);
+  });
+
+  it('preserves line breaks in imported plain-text fields', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.extraFieldValues.customfield_20001 = 'First line\nSecond line';
+    const ticket = await linkedTicket(context);
+    expect(ticket.extraFields?.[0].adf.content).toEqual([{ type: 'paragraph', content: [
+      { type: 'text', text: 'First line' }, { type: 'hardBreak' }, { type: 'text', text: 'Second line' },
+    ] }]);
+  });
+
+  it('never discovers non-text-schema fields (e.g. the numeric story-points field)', async () => {
+    const context = fixture();
+    context.state.extraFieldValues.customfield_10123 = 8;
+    const ticket = await linkedTicket(context);
+    const result = await context.act('details', { ticketId: ticket.id });
+    expect(result.detail?.extraFields).toBeUndefined();
+  });
+
+  it.each(['foreign', 'manual'] as const)('rejects details/prepareEdit for a ticket not linked to Jira (%s)', async (kind) => {
+    const context = fixture();
+    await connected(context);
+    let ticketId: string;
+    if (kind === 'foreign') {
+      ticketId = 'unknown-ticket';
+    } else {
+      context.room.addTicket(context.host.id, { type: 'story', title: 'Manual', description: '' });
+      ticketId = context.room.tickets[0].id;
+    }
+    await expect(context.act('details', { ticketId })).rejects.toThrow('This ticket is not linked to Jira');
+    await expect(context.act('prepareEdit', { ticketId, title: 'New title', description: '' })).rejects.toThrow('This ticket is not linked to Jira');
+  });
+
+  it('rejects details/prepareEdit when the ticket is linked to a different Jira site', async () => {
+    const context = fixture();
+    const ticket = await linkedTicket(context);
+    (ticket.jira as { cloudId: string }).cloudId = otherSite.id;
+    await expect(context.act('details', { ticketId: ticket.id })).rejects.toThrow('Reconnect to this ticket\'s Jira site before editing');
+    await expect(context.act('prepareEdit', { ticketId: ticket.id, title: ticket.title, description: '' })).rejects.toThrow(
+      'Reconnect to this ticket\'s Jira site before editing',
+    );
+  });
+
+  it('previews only the changed fields, writes them together in one PUT, and updates the cached ticket', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.editable.customfield_20001 = { operations: ['set'] };
+    context.state.extraFieldValues.customfield_20001 = 'Original criteria';
+    const ticket = await linkedTicket(context);
+    const revisionBefore = ticket.revision ?? 0;
+    const { editPreview } = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: 'Updated title', description: 'Updated description', extraFields: { customfield_20001: 'Updated criteria' },
+    });
+    expect(editPreview).toEqual({
+      id: expect.any(String), issueKey: 'TEAM-7', issueUrl: `${site.url}/browse/TEAM-7`, siteName: site.name,
+      changes: [
+        { fieldId: 'summary', fieldName: 'Summary', from: 'Imported story', to: 'Updated title' },
+        { fieldId: 'description', fieldName: 'Description', from: '', to: 'Updated description' },
+        { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: 'Original criteria', to: 'Updated criteria' },
+      ],
+    });
+    expect(context.writes()).toHaveLength(0);
+    const result = await context.act('confirmEdit', { confirmationId: editPreview!.id });
+    expect(result).toEqual({ written: true });
+    const writes = context.writes();
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(String(writes[0][1]?.body))).toEqual({
+      fields: { summary: 'Updated title', description: { type: 'doc', version: 1,
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Updated description' }] }] },
+        customfield_20001: 'Updated criteria' },
+    });
+    expect(ticket.title).toBe('Updated title');
+    expect(ticket.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Updated criteria' }] }] } }]);
+    expect(ticket.revision ?? 0).toBeGreaterThan(revisionBefore);
+    await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('already used');
+  });
+
+  it('writes back multiple discovered fields together in a single PUT', async () => {
+    const context = fixture();
+    const extraField = { id: 'customfield_40001', name: 'Extra Description Notes', schema: { type: 'string' } };
+    context.state.fields.push(acField, extraField);
+    context.state.editable.customfield_20001 = { operations: ['set'] };
+    context.state.editable.customfield_40001 = { operations: ['set'] };
+    context.state.extraFieldValues.customfield_20001 = 'Original criteria';
+    context.state.extraFieldValues.customfield_40001 = 'Original notes';
+    const ticket = await linkedTicket(context);
+    const { editPreview } = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: '',
+      extraFields: { customfield_20001: 'Updated criteria', customfield_40001: 'Updated notes' },
+    });
+    expect(editPreview?.changes).toEqual(expect.arrayContaining([
+      { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: 'Original criteria', to: 'Updated criteria' },
+      { fieldId: 'customfield_40001', fieldName: 'Extra Description Notes', from: 'Original notes', to: 'Updated notes' },
+    ]));
+    const confirmResult = await context.act('confirmEdit', { confirmationId: editPreview!.id });
+    expect(confirmResult).toEqual({ written: true });
+    const [, init] = context.writes().at(-1)!;
+    expect(JSON.parse(String(init?.body)).fields).toEqual({
+      customfield_20001: 'Updated criteria', customfield_40001: 'Updated notes',
+    });
+    expect(ticket.extraFields?.map((field) => field.id).sort()).toEqual(['customfield_20001', 'customfield_40001']);
+  });
+
+  it('retains unedited imported fields after a title-only update', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.extraFieldValues.customfield_20001 = 'Original criteria';
+    const ticket = await linkedTicket(context);
+    const originalFields = structuredClone(ticket.extraFields);
+    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: '' });
+    expect(await context.act('confirmEdit', { confirmationId: editPreview!.id })).toEqual({ written: true });
+    expect(ticket.extraFields).toEqual(originalFields);
+  });
+
+  it('rejects a no-op edit without calling prepare metadata for nothing', async () => {
+    const context = fixture();
+    const ticket = await linkedTicket(context);
+    await expect(context.act('prepareEdit', { ticketId: ticket.id, title: ticket.title, description: '' })).rejects.toThrow('No changes to write back');
+    expect(context.writes()).toHaveLength(0);
+  });
+
+  it('rejects editing a field id that was not discovered on this issue', async () => {
+    const context = fixture();
+    const ticket = await linkedTicket(context);
+    await expect(context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: '', extraFields: { customfield_99999: 'New value' },
+    })).rejects.toThrow('One of the submitted fields is not editable on this issue');
+  });
+
+  it('rejects a race where Jira fields changed since the preview and consumes the confirmation', async () => {
+    const context = fixture();
+    const ticket = await linkedTicket(context);
+    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: '' });
+    context.state.issue.fields.summary = 'Changed upstream';
+    await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('Jira fields changed since the preview');
+    await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('already used');
+    expect(context.writes()).toHaveLength(0);
+  });
+
+  it('expires the edit confirmation after its TTL', async () => {
+    vi.useFakeTimers();
+    const context = fixture();
+    const ticket = await linkedTicket(context);
+    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: '' });
+    vi.advanceTimersByTime(120_000);
+    await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('Confirmation expired or was already used');
+    expect(context.writes()).toHaveLength(0);
+  });
+
+  it.each([
+    ['[SPIKE] Investigate caching options', 'Story'],
+    ['Investigate caching options [Spike]', 'Task'],
+  ])('imports "%s" as a Spike regardless of the Jira issue type (%s)', async (summary, jiraType) => {
+    const context = fixture();
+    context.state.issue.fields.summary = summary;
+    context.state.issue.fields.issuetype.name = jiraType;
+    const ticket = await linkedTicket(context);
+    expect(ticket.type).toBe('spike');
   });
 });
 

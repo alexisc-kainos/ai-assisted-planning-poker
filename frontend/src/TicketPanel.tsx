@@ -2,9 +2,17 @@ import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'reac
 import type { RoomTicket, TicketFields, TicketType } from './types';
 import { MAX_TICKETS, ticketDescriptionError, ticketTitleError } from './validation';
 import { VoteResults } from './VoteResults';
-import { JiraDescription, JiraIssueLink } from './JiraDescription';
+import { hasJiraText, hasRenderableJiraContent, JiraDescription, JiraIssueLink } from './JiraDescription';
 
 export const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike', bug: 'Bug', task: 'Task' };
+
+export function ExpandTicketButton({ onExpand }: { onExpand: () => void }) {
+  return (
+    <button type="button" className="expand-ticket" onClick={onExpand}>
+      Expand <span aria-hidden="true">⤢</span>
+    </button>
+  );
+}
 
 interface TicketPanelProps {
   tickets: RoomTicket[];
@@ -14,6 +22,7 @@ interface TicketPanelProps {
   onEdit: (ticketId: string, fields: TicketFields, type: TicketType) => void;
   onRemove: (ticketId: string) => void;
   onSelect: (ticketId: string) => void;
+  onExpand: (ticketId: string) => void;
 }
 
 function TicketTypeOptions({ value, onChange }: { value: TicketType; onChange: (type: TicketType) => void }) {
@@ -163,7 +172,7 @@ interface TicketItemProps extends Omit<TicketPanelProps, 'tickets' | 'activeTick
   active: boolean;
 }
 
-function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: TicketItemProps) {
+function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect, onExpand }: TicketItemProps) {
   const [editing, setEditing] = useState(false);
   const [editType, setEditType] = useState<TicketType>(ticket.type);
   const [pendingEdit, setPendingEdit] = useState<(TicketFields & { type: TicketType }) | null>(null);
@@ -198,6 +207,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
         <span className={`badge type-${ticket.type}`}>{TYPE_LABELS[ticket.type]}</span>
         {active && <span className="badge voted">Active</span>}
         {ticket.result && <span className="badge waiting">Revealed</span>}
+        <ExpandTicketButton onExpand={() => onExpand(ticket.id)} />
       </div>
       {editing && !ticket.jira ? (
         <>
@@ -227,9 +237,15 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect }: Tick
             <strong>{ticket.title}</strong>
           </p>
           {ticket.jira && <JiraIssueLink url={ticket.jira.url}>{ticket.jira.key}</JiraIssueLink>}
-          {ticket.jira && ticket.descriptionAdf ? (
+          {ticket.jira && ticket.descriptionAdf && hasRenderableJiraContent(ticket.descriptionAdf) ? (
             <JiraDescription document={ticket.descriptionAdf} issueUrl={ticket.jira.url} />
           ) : ticket.description && <p className="ticket-description">{ticket.description}</p>}
+          {ticket.jira && ticket.extraFields?.filter((field) => /description/i.test(field.name) && hasJiraText(field.adf)).map((field) => (
+            <section key={field.id}>
+              <h3>{field.name}</h3>
+              <JiraDescription document={field.adf} issueUrl={ticket.jira!.url} />
+            </section>
+          ))}
         </div>
       )}
       <div className="vote-actions">

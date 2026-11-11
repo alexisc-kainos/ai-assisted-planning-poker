@@ -23,7 +23,10 @@ describe('JiraDescription', () => {
         { type: 'tableHeader', content: [{ type: 'text', text: 'Column' }] },
         { type: 'tableCell', content: [{ type: 'text', text: 'Value' }] },
       ] }] },
-      { type: 'panel', content: [{ type: 'mention', attrs: { text: '@Alex' } }] },
+      { type: 'panel', content: [
+        { type: 'mention', attrs: { text: '@Alex' } },
+        { type: 'emoji', attrs: { shortName: ':rocket:' } },
+      ] },
     ] };
     const { container } = render(<JiraDescription document={document} issueUrl={issueUrl} />);
     expect(screen.getByRole('region', { name: 'Jira description' })).toHaveAttribute('tabindex', '0');
@@ -36,6 +39,7 @@ describe('JiraDescription', () => {
     expect(screen.getByRole('columnheader')).toHaveTextContent('Column');
     expect(screen.getByRole('cell')).toHaveTextContent('Value');
     expect(screen.getByText('@Alex')).toBeInTheDocument();
+    expect(screen.getByText(':rocket:')).toBeInTheDocument();
     expect(container.querySelector('pre code')).toHaveTextContent('<script>literal()</script>');
     expect(container.querySelector('script')).toBeNull();
     expect(container.querySelector('br')).not.toBeNull();

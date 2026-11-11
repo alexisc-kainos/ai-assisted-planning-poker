@@ -24,6 +24,20 @@ export interface JiraPreview {
   currentPoints: number | null;
   points: number;
 }
+export interface JiraEditChange { fieldId: string; fieldName: string; from: string; to: string }
+export interface JiraEditPreview {
+  id: string;
+  issueKey: string;
+  issueUrl: string;
+  siteName: string;
+  changes: JiraEditChange[];
+}
+export interface JiraExtraField { id: string; name: string; adf: AdfDocument }
+export interface JiraTicketDetail {
+  title: string;
+  descriptionAdf: AdfDocument;
+  extraFields?: JiraExtraField[];
+}
 export interface JiraResult {
   status?: JiraStatus;
   authorizeUrl?: string;
@@ -33,6 +47,8 @@ export interface JiraResult {
   written?: boolean;
   uncertain?: boolean;
   suggestions?: JiraSuggestion[];
+  detail?: JiraTicketDetail;
+  editPreview?: JiraEditPreview;
 }
 interface Confirmation {
   preview: JiraPreview;
@@ -40,6 +56,15 @@ interface Confirmation {
   revision: number;
   round: number;
   expiresAt: number;
+}
+interface EditField extends JiraField { kind: 'string' | 'adf' }
+interface EditConfirmation {
+  preview: JiraEditPreview;
+  ticket: RoomTicket;
+  revision: number;
+  expiresAt: number;
+  values: { title: string; description: string; extraFields: Record<string, string> };
+  fields: EditField[];
 }
 interface Session {
   ownerId: string;
@@ -51,6 +76,7 @@ interface Session {
   timer?: NodeJS.Timeout;
   busy: boolean;
   confirmation?: Confirmation;
+  editConfirmation?: EditConfirmation;
   suggestionRequest?: AbortController;
   returnUrl?: string;
 }
@@ -110,6 +136,59 @@ function numericValue(issue: unknown, fieldId: string): number | null {
   return value;
 }
 
+/** Flattens an ADF document to plain text; paragraphs/headings/list items become lines, separated by a blank line. */
+function adfToPlainText(doc: AdfDocument): string {
+  const blocks: string[] = [];
+  const textOf = (node: AdfNode): string => {
+    if (node.type === 'text') return node.text ?? '';
+    if (node.type === 'hardBreak') return '\n';
+    if (node.type === 'mention') return typeof node.attrs?.text === 'string' ? node.attrs.text : 'Mention in Jira';
+    if (node.type === 'emoji') return typeof node.attrs?.text === 'string' ? node.attrs.text
+      : typeof node.attrs?.shortName === 'string' ? node.attrs.shortName : '';
+    return (node.content ?? []).map(textOf).join('');
+  };
+  const walk = (node: AdfNode): void => {
+    if (['paragraph', 'heading', 'listItem', 'blockquote', 'codeBlock'].includes(node.type)) {
+      const text = (node.content ?? []).map(textOf).join('');
+      if (text) blocks.push(text);
+      return;
+    }
+    for (const child of node.content ?? []) walk(child);
+  };
+  walk(doc as unknown as AdfNode);
+  return blocks.join('\n\n');
+}
+
+/** Converts plain text back to a simple ADF document; blank lines separate paragraphs. */
+function plainTextToAdf(text: string): AdfDocument {
+  const paragraphs = text.split(/\r?\n(?:\r?\n)+/).map((paragraph) => paragraph.trim()).filter(Boolean);
+  return {
+    type: 'doc', version: 1,
+    content: paragraphs.map((paragraph) => ({ type: 'paragraph', content: paragraph.split(/\r?\n/).flatMap((line, index) => [
+      ...(index ? [{ type: 'hardBreak' }] : []), ...(line ? [{ type: 'text', text: line }] : []),
+    ]) })),
+  };
+}
+
+interface TextFieldValue { text: string; adf: AdfDocument; kind: 'string' | 'adf' }
+
+/** Reads a text-ish custom field that Jira may return as a plain string or an ADF document. */
+function textFieldValue(issue: unknown, fieldId: string): TextFieldValue | null {
+  if (!record(issue) || !record(issue.fields)) throw new Error('Jira returned an invalid issue');
+  // Jira omits fields that aren't on this issue's field configuration rather than returning null; treat that as no value.
+  if (!(fieldId in issue.fields)) return null;
+  const value = issue.fields[fieldId];
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? { text: trimmed, adf: validateJiraDescription(plainTextToAdf(trimmed)), kind: 'string' } : null;
+  }
+  if (!record(value) || value.type !== 'doc') return null;
+  const adf = validateJiraDescription(value);
+  const text = adfToPlainText(adf).trim();
+  return text ? { text, adf, kind: 'adf' } : null;
+}
+
 function htmlText(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -157,6 +236,7 @@ export class JiraService {
       session.suggestionRequest?.abort();
       delete session.accessToken;
       delete session.confirmation;
+      delete session.editConfirmation;
     }
     this.sessions.delete(room);
     for (const [key, pending] of this.starts) if (pending.room === room) this.starts.delete(key);
@@ -287,6 +367,7 @@ export class JiraService {
         if (session.site && session.site.id !== site.id) throw new Error('Disconnect Jira before changing sites');
         session.site = site;
         delete session.confirmation;
+        delete session.editConfirmation;
         this.changed(room, this.status(room));
         return { status: this.status(room) };
       }
@@ -301,6 +382,9 @@ export class JiraService {
       }
       if (message.action === 'prepare') return await this.prepare(room, session, message.ticketId, message.fieldId);
       if (message.action === 'confirm') return await this.confirm(room, session, message.confirmationId);
+      if (message.action === 'details') return await this.details(room, session, message.ticketId);
+      if (message.action === 'prepareEdit') return await this.prepareEdit(room, session, message.ticketId, message.title, message.description, message.extraFields);
+      if (message.action === 'confirmEdit') return await this.confirmEdit(room, session, message.confirmationId);
       throw new Error('Unknown Jira action');
     } finally {
       session.busy = false;
@@ -351,15 +435,22 @@ export class JiraService {
         !/^[A-Z][A-Z0-9_]*-\d+$/i.test(issue.key) || !record(issue.fields)) throw new Error('Jira returned an invalid issue');
     const fields = issue.fields;
     if (typeof fields.summary !== 'string' || !fields.summary.trim() || Array.from(fields.summary).length > 255) throw new Error('Jira summary is missing or exceeds 255 characters');
-    const typeName = record(fields.issuetype) && typeof fields.issuetype.name === 'string' ? fields.issuetype.name.toLowerCase() : '';
+    const issueTypeName = record(fields.issuetype) && typeof fields.issuetype.name === 'string' ? fields.issuetype.name.toLowerCase() : '';
+    // A "[SPIKE]" title convention overrides the Jira issue type when teams don't have a native Spike type.
+    const typeName = /\[spike\]/i.test(fields.summary) ? 'spike' : issueTypeName;
     if (!isTicketType(typeName)) throw new Error('Unsupported ticket type. Only Story, Spike, Bug and Task are supported.');
-    const descriptionAdf = validateJiraDescription(fields.description);
+    validateJiraDescription(fields.description);
+    const candidates = await this.discoverExtraFields(room, session);
+    const snapshot = await this.readIssue(room, session, issue.id, candidates);
+    const extraFields = snapshot.extras.filter((extra) => extra.adf !== undefined)
+      .map(({ id, name, adf }) => ({ id, name, adf: adf! }));
     this.valid(room, session);
     const ticket = room.importTicket(userId, {
       type: typeName,
       title: fields.summary,
       description: '',
-      descriptionAdf,
+      descriptionAdf: snapshot.descriptionAdf,
+      ...(extraFields.length ? { extraFields } : {}),
       jira: { cloudId: site.id, issueId: issue.id, key: issue.key, url: `${site.url}/browse/${encodeURIComponent(issue.key)}` },
     });
     return { ticketId: ticket.id };
@@ -387,6 +478,158 @@ export class JiraService {
       if (record(edit) && Array.isArray(edit.operations) && edit.operations.includes('set')) result.push({ id: field.id, name: field.name });
     }
     return result;
+  }
+
+  private jiraTicket(room: Room, session: Session, ticketId: string): RoomTicket {
+    const ticket = room.tickets.find((candidate) => candidate.id === ticketId);
+    if (!ticket?.jira) throw new Error('This ticket is not linked to Jira');
+    if (ticket.jira.cloudId !== session.site?.id) throw new Error('Reconnect to this ticket\'s Jira site before editing');
+    return ticket;
+  }
+
+  private async discoverExtraFields(room: Room, session: Session): Promise<JiraField[]> {
+    const fields = await this.api(room, session, '/rest/api/3/field');
+    if (!Array.isArray(fields)) throw new Error('Jira returned invalid field metadata');
+    return fields
+      .filter((field): field is { id: string; name: string } => record(field) && typeof field.id === 'string' &&
+        typeof field.name === 'string' && field.id !== 'description' && field.id !== 'summary' &&
+        (/description/i.test(field.name) || /^acceptance criteria$/i.test(field.name)) &&
+        record(field.schema) && field.schema.type === 'string')
+      .sort((first, second) => Number(/description/i.test(second.name)) - Number(/description/i.test(first.name)) || first.id.localeCompare(second.id));
+  }
+
+  private async fieldEditable(room: Room, session: Session, ticket: RoomTicket, field: JiraField): Promise<boolean> {
+    const meta = await this.api(room, session, `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}/editmeta`);
+    const editable = record(meta) && record(meta.fields) ? meta.fields : {};
+    const edit = editable[field.id];
+    return record(edit) && Array.isArray(edit.operations) && edit.operations.includes('set');
+  }
+
+  private async readIssue(room: Room, session: Session, issueId: string, candidates: JiraField[] = []): Promise<{
+    title: string; descriptionAdf: AdfDocument; description: string;
+    extras: Array<{ id: string; name: string; text: string; adf?: AdfDocument; kind: 'string' | 'adf' }>;
+  }> {
+    let title = '';
+    let descriptionAdf: AdfDocument = { type: 'doc', version: 1, content: [] };
+    const extras: Array<{ id: string; name: string; text: string; adf?: AdfDocument; kind: 'string' | 'adf' }> = [];
+    for (let offset = 0; offset < Math.max(candidates.length, 1); offset += 40) {
+      const batch = candidates.slice(offset, offset + 40);
+      const fieldsParam = ['summary', 'description', ...batch.map((field) => field.id)].join(',');
+      const issue = await this.api(room, session, `/rest/api/3/issue/${encodeURIComponent(issueId)}?fields=${encodeURIComponent(fieldsParam)}`);
+      if (!record(issue) || !record(issue.fields) || typeof issue.fields.summary !== 'string' ||
+          !issue.fields.summary.trim() || Array.from(issue.fields.summary).length > 255) throw new Error('Jira summary is missing or exceeds 255 characters');
+      if (offset === 0) {
+        title = issue.fields.summary;
+        descriptionAdf = validateJiraDescription(issue.fields.description);
+      }
+      extras.push(...batch.map((field) => {
+        const value = textFieldValue(issue, field.id);
+        return { id: field.id, name: field.name, text: value?.text ?? '', adf: value?.adf, kind: value?.kind ?? 'string' as const };
+      }));
+    }
+    return { title, descriptionAdf, description: adfToPlainText(descriptionAdf), extras };
+  }
+
+  private async details(room: Room, session: Session, ticketId: string): Promise<JiraResult> {
+    const ticket = this.jiraTicket(room, session, ticketId);
+    const candidates = await this.discoverExtraFields(room, session);
+    const snapshot = await this.readIssue(room, session, ticket.jira!.issueId, candidates);
+    const present = snapshot.extras.filter((extra) => extra.adf !== undefined);
+    const extraFields: JiraExtraField[] = present.map(({ id, name, adf }) => ({ id, name, adf: adf! }));
+    room.applyJiraFieldUpdate(ticket.id, {
+      title: snapshot.title, descriptionAdf: snapshot.descriptionAdf, extraFields: extraFields.length ? extraFields : undefined,
+    });
+    return { detail: { title: snapshot.title, descriptionAdf: snapshot.descriptionAdf,
+      ...(extraFields.length ? { extraFields } : {}) } };
+  }
+
+  private async prepareEdit(room: Room, session: Session, ticketId: string, title: string, description: string, extraFields?: Record<string, string>): Promise<JiraResult> {
+    const ticket = this.jiraTicket(room, session, ticketId);
+    const revision = ticket.revision ?? 0;
+    delete session.editConfirmation;
+    const submitted = Object.entries(extraFields ?? {});
+    const candidates = submitted.length ? await this.discoverExtraFields(room, session) : [];
+    const editFields: JiraField[] = [];
+    for (const [id] of submitted) {
+      const field = candidates.find((candidate) => candidate.id === id);
+      if (!field || !(await this.fieldEditable(room, session, ticket, field))) throw new Error('One of the submitted fields is not editable on this issue');
+      editFields.push(field);
+    }
+    const current = await this.readIssue(room, session, ticket.jira!.issueId, editFields);
+    this.jiraTicket(room, session, ticketId);
+    if ((ticket.revision ?? 0) !== revision) throw new Error('The ticket changed. Review it and prepare again.');
+    const changes: JiraEditChange[] = [];
+    if (title !== current.title) changes.push({ fieldId: 'summary', fieldName: 'Summary', from: current.title, to: title });
+    if (description !== current.description) changes.push({ fieldId: 'description', fieldName: 'Description', from: current.description, to: description });
+    const fields: EditField[] = [];
+    for (const extra of current.extras) {
+      fields.push({ id: extra.id, name: extra.name, kind: extra.kind });
+      const value = extraFields?.[extra.id];
+      if (value !== undefined && value !== extra.text) changes.push({ fieldId: extra.id, fieldName: extra.name, from: extra.text, to: value });
+    }
+    if (!changes.length) throw new Error('No changes to write back');
+    const preview: JiraEditPreview = { id: randomId(), issueKey: ticket.jira!.key, issueUrl: ticket.jira!.url, siteName: session.site!.name, changes };
+    session.editConfirmation = {
+      preview, ticket, revision, expiresAt: Date.now() + 2 * 60 * 1_000,
+      values: { title, description, extraFields: Object.fromEntries(submitted) }, fields,
+    };
+    return { editPreview: preview };
+  }
+
+  private async confirmEdit(room: Room, session: Session, confirmationId: string): Promise<JiraResult> {
+    const confirmation = session.editConfirmation;
+    delete session.editConfirmation;
+    if (!confirmation || confirmation.preview.id !== confirmationId || confirmation.expiresAt <= Date.now()) throw new Error('Confirmation expired or was already used. Prepare a new confirmation.');
+    const { ticket, preview, revision, values, fields } = confirmation;
+    const check = () => {
+      this.valid(room, session);
+      if (this.jiraTicket(room, session, ticket.id) !== ticket || (ticket.revision ?? 0) !== revision) throw new Error('The ticket changed. Prepare a new confirmation.');
+    };
+    check();
+    const current = await this.readIssue(room, session, ticket.jira!.issueId, fields);
+    check();
+    const latest: Record<string, string> = { summary: current.title, description: current.description };
+    for (const extra of current.extras) latest[extra.id] = extra.text;
+    if (preview.changes.some((change) => latest[change.fieldId] !== change.from)) throw new Error('Jira fields changed since the preview. Prepare and confirm the new values.');
+    const body: Record<string, unknown> = {};
+    for (const change of preview.changes) {
+      if (change.fieldId === 'summary') body.summary = values.title;
+      else if (change.fieldId === 'description') body.description = plainTextToAdf(values.description);
+      else {
+        const field = fields.find((candidate) => candidate.id === change.fieldId);
+        const value = values.extraFields[change.fieldId] ?? '';
+        body[change.fieldId] = field?.kind === 'adf' ? plainTextToAdf(value) : value;
+      }
+    }
+    const issuePath = `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}`;
+    let putSucceeded = false;
+    try {
+      await this.api(room, session, issuePath, { method: 'PUT', body: JSON.stringify({ fields: body }) });
+      putSucceeded = true;
+      const verified = await this.readIssue(room, session, ticket.jira!.issueId, fields);
+      check();
+      const present = verified.extras.filter((extra) => extra.adf !== undefined);
+      const verifiedExtraFields: JiraExtraField[] = [
+        ...(ticket.extraFields ?? []).filter((field) => !fields.some((edited) => edited.id === field.id)),
+        ...present.map(({ id, name, adf }) => ({ id, name, adf: adf! })),
+      ];
+      room.applyJiraFieldUpdate(ticket.id, {
+        title: verified.title, descriptionAdf: verified.descriptionAdf,
+        extraFields: verifiedExtraFields.length ? verifiedExtraFields : undefined,
+      });
+      const verifiedValues: Record<string, string> = { summary: verified.title, description: verified.description };
+      for (const extra of verified.extras) verifiedValues[extra.id] = extra.text;
+      const matches = preview.changes.every((change) => {
+        const expected = body[change.fieldId];
+        if (typeof expected === 'string') return verifiedValues[change.fieldId] === expected;
+        const text = adfToPlainText(expected as AdfDocument);
+        return verifiedValues[change.fieldId] === (change.fieldId === 'description' ? text : text.trim());
+      });
+      return matches ? { written: true } : { written: false, uncertain: true };
+    } catch (error) {
+      if (!putSucceeded && error instanceof Error && /not permitted|not found|rate limiting/.test(error.message)) throw error;
+      return { written: false, uncertain: true };
+    }
   }
 
   private async prepare(room: Room, session: Session, ticketId: string, fieldId?: string): Promise<JiraResult> {

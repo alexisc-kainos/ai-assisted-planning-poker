@@ -178,11 +178,12 @@ Imported tickets retain the existing ticket fields and add optional metadata:
   "description": "",
   "result": null,
   "jira": { "cloudId": "cloud-id", "issueId": "10001", "key": "APP-1", "url": "https://team.atlassian.net/browse/APP-1" },
-  "descriptionAdf": { "type": "doc", "version": 1, "content": [] }
+  "descriptionAdf": { "type": "doc", "version": 1, "content": [] },
+  "extraFields": [{ "id": "customfield_10200", "name": "Acceptance Criteria", "adf": { "type": "doc", "version": 1, "content": [] } }]
 }
 ```
 
-`jira` contains public issue identity, not credentials. `descriptionAdf` retains the complete accepted Atlassian Document Format document; null/missing upstream descriptions become an empty document. Imported summary limits are 255 Unicode characters; ADF is limited to 256 KiB serialized UTF-8, depth 64 (root depth 0) and 20,000 nodes. Invalid/oversized imports fail atomically, never truncate. Manual limits remain 100/500 characters.
+`jira` contains public issue identity, not credentials. `descriptionAdf` retains the complete accepted Atlassian Document Format document; null/missing upstream descriptions become an empty document. On import and detail refresh, `extraFields` contains populated text fields whose names contain `description` or exactly match `acceptance criteria`, case-insensitively, excluding the standard summary and description fields. Description fields come first, and acceptance criteria appear only in the expanded view. Fields without text are omitted. Clients must treat it as optional and render nothing when absent. Imported summary limits are 255 Unicode characters; ADF is limited to 256 KiB serialized UTF-8, depth 64 (root depth 0) and 20,000 nodes. Invalid/oversized imports fail atomically, never truncate. Manual limits remain 100/500 characters.
 
 The renderer supports formatted text, headings, lists, tables, panels, code, links and mentions without raw HTML. Unsupported/private media and embeds have labelled links to Jira. Rendering stops descending beyond depth 40 with an explicit linked fallback; this does not truncate stored ADF accepted up to depth 64. Unsafe URL protocols are not executable.
 
@@ -330,8 +331,11 @@ Every request requires `requestId` matching `^[a-zA-Z0-9_-]{1,64}$`. Clients sho
 | `agree` | `ticketId`: 1–64 code units; `points`: numeric member of `[1,2,3,5,8,13,20]` | `{ ticketId }` plus public `state` broadcast; no Jira write |
 | `prepare` | `ticketId`: 1–64 code units; optional nonblank `fieldId`, max 128 code units | `{ fields: [{ id, name }] }` if ambiguous, otherwise `{ preview }` |
 | `confirm` | `confirmationId`: nonblank string, max 64 code units | `{ written: true }` after verification, or `{ written: false, uncertain: true }` |
+| `details` | `ticketId`: 1–64 code units | `{ detail: { title, descriptionAdf, extraFields? } }` plus public `state` broadcast |
+| `prepareEdit` | `ticketId`: 1–64 code units; `title`: 1–255 Unicode characters, no line breaks; `description`: 0–50,000 characters; optional `extraFields`: object of up to 10 entries mapping a discovered field id to a 0–50,000 character value | `{ editPreview }` |
+| `confirmEdit` | `confirmationId`: nonblank string, max 64 code units | `{ written: true }` after verification, or `{ written: false, uncertain: true }` plus public `state` broadcast |
 
-Import accepts a case-insensitive issue key or HTTPS `/browse/KEY` URL (optional trailing slash) on the selected site's exact origin, without URL credentials. Input is trimmed and keys normalised; the API request is built from the authorised cloud ID and parsed key, never fetched from user input directly. Story, Spike, Bug and Task names map case-insensitively; other types fail. Identity `(cloudId, issueId)` is deduplicated across the room, and the shared 10-ticket cap applies. Import does not require an editable points field and never activates the ticket automatically.
+Import accepts a case-insensitive issue key or HTTPS `/browse/KEY` URL (optional trailing slash) on the selected site's exact origin, without URL credentials. Input is trimmed and keys normalised; the API request is built from the authorised cloud ID and parsed key, never fetched from user input directly. Story, Spike, Bug and Task names map case-insensitively; other types fail. A `[SPIKE]` substring (case-insensitive) anywhere in the Jira summary overrides the mapped type to Spike regardless of the issue's actual Jira issue type, for teams without a native Spike issue type. Identity `(cloudId, issueId)` is deduplicated across the room, and the shared 10-ticket cap applies. Import does not require an editable points field and never activates the ticket automatically.
 
 Suggestions use the connected site's `/rest/api/3/issue/picker` with a bounded key-prefix query and project-scoped JQL. The picker's own `query` text match is omitted until the prefix includes at least one issue-number digit (e.g. `AL-`), since Jira's text match on a bare project prefix with no digits returns no results even though `currentJQL` already scopes to the project; `AL-1` still passes `query` through for numeric-prefix matching. Only the current-search section is used, not history; malformed/nonmatching/already-imported keys are excluded. Results are numerically sorted by key and use plain `summaryText`, never Jira's HTML. Types are not assumed by search (sites need not have Spike configured); import still enforces the supported types. The frontend debounces typing by 300ms, ignores stale replies, and supports Arrow keys/Enter/Escape or pointer selection. Selecting only fills the field; import remains explicit. Superseded reads are aborted and do not lock mutation operations; disconnect/expiry/host change invalidates them. No additional scopes, bulk import or background synchronisation are introduced.
 
@@ -360,6 +364,26 @@ Display the site, issue, field ID/name, current value (`null` means unset) and r
 
 Only the selected field of the bound linked issue is updated; a read verifies the result. Conflict detection is best-effort read-before-write, not atomic compare-and-swap. An uncertain reply means the write may have happened: read/reconcile with Jira before another explicitly confirmed attempt, never automatically retry. Disconnect cannot undo or reliably cancel a write already sent upstream. No background sync occurs.
 
+`details` powers the full-screen ticket overlay: it re-fetches summary, description and matching extra fields directly from Jira, updates the room's cached ticket and broadcasts it to everyone, so any participant opening the overlay sees whatever the facilitator last fetched even though only the facilitator can trigger a live refresh. It requires the ticket to be linked to Jira and bound to the connected site (`Reconnect to this ticket's Jira site before editing` otherwise). Extra fields are discovered dynamically from fields with a plain-text schema (`schema.type === "string"`) and a name containing `description` or exactly matching `acceptance criteria`, case-insensitively; this includes project-specific names such as `Description (DSP)`. Only fields containing text are included in `extraFields`; a field need not be on the issue's edit screen to be read and displayed. Jira may return a field as a plain string or as ADF; both are normalised to ADF for display and flattened back to plain text for editing.
+
+`prepareEdit`/`confirmEdit` write back title, description and any submitted extra fields together as a single combined change, mirroring the `prepare`/`confirm` preview-then-confirm pattern but in its own session slot so an in-flight story-points write-back and a ticket edit do not interfere with each other. A submitted `extraFields` key must match a field discovered on this issue and be editable on its edit screen, or the request is rejected with `One of the submitted fields is not editable on this issue`. `prepareEdit` re-reads the current Jira values, diffs them against the submitted fields and rejects with `No changes to write back` if nothing differs; otherwise it returns an `editPreview`:
+
+```json
+{
+  "editPreview": {
+    "id": "opaque-confirmation-id",
+    "issueKey": "APP-1",
+    "issueUrl": "https://team.atlassian.net/browse/APP-1",
+    "siteName": "Team",
+    "changes": [
+      { "fieldId": "summary", "fieldName": "Summary", "from": "Log in", "to": "Log in with SSO" }
+    ]
+  }
+}
+```
+
+Only fields that actually changed are listed and written; display every change's field name, old and new value before confirmation. `confirmEdit` consumes the confirmation once, within two minutes, re-checks the connection, ticket identity and revision, re-reads current Jira values and rejects with `Jira fields changed since the preview. Prepare and confirm the new values.` if any changed field's current value no longer matches what was previewed. On success the room's cached ticket (title, `descriptionAdf`, `extraFields`) is updated and broadcast to everyone, editing plain text only; there is no rich-text formatting toolbar.
+
 #### Jira failures and lifecycle
 
 Failures retain local imported tickets, vote results and agreed estimates. Representative exact `error` values include:
@@ -379,11 +403,16 @@ Failures retain local imported tickets, vote results and agreed estimates. Repre
 | Malformed/deep description | `Jira description is invalid or exceeds the nesting safety limit; nothing was imported` |
 | Summary limit | `Jira summary is missing or exceeds 255 characters` |
 | Wrong site for write | `Reconnect to this ticket's Jira site before writing points` |
+| Ticket not linked to Jira (`details`/`prepareEdit`) | `This ticket is not linked to Jira` |
+| Wrong site for `details`/`prepareEdit` | `Reconnect to this ticket's Jira site before editing` |
+| Submitted extra field not discovered/editable | `One of the submitted fields is not editable on this issue` |
+| No-op edit | `No changes to write back` |
 | Unrevealed/inactive Story | `Reveal this story before writing points` |
 | Agreement missing | `Choose and agree a numeric story-deck value first` |
 | Missing editable field | `No editable story-points field was found for this issue. Your estimate is kept.` |
 | Confirmation expired/replayed | `Confirmation expired or was already used. Prepare a new confirmation.` |
 | Jira value changed | `Jira points changed since the preview. Prepare and confirm the new values.` |
+| Jira edit value changed | `Jira fields changed since the preview. Prepare and confirm the new values.` |
 | Upstream 403 | `Your Jira account is not permitted to perform this action` |
 | Upstream 404 | `Jira issue or field was not found or is not visible to your account` |
 | Upstream 429 | `Jira is rate limiting requests. Wait before trying again.` |

@@ -75,6 +75,20 @@ describe('create and join handshake', () => {
     });
   });
 
+  it('keeps the connection open for Jira edit messages larger than 16 KiB', async () => {
+    await start();
+    const alice = await connect(port, { room: ROOM, name: 'Alice' });
+    await alice.next('welcome');
+    await alice.next('state');
+
+    alice.send({ type: 'jira', requestId: 'large-edit', action: 'prepareEdit', ticketId: 'ticket-1',
+      title: 'Long description', description: 'x'.repeat(20_000) });
+
+    expect(await alice.next('jira')).toMatchObject({ type: 'jira', requestId: 'large-edit', ok: false });
+    expect(alice.ws.readyState).toBe(1);
+    await alice.close();
+  });
+
   it('broadcasts the full roster to everyone when someone joins, in join order', async () => {
     await start();
     const alice = await connect(port, { room: ROOM, name: 'Alice', avatar: 'cat' });
