@@ -40,6 +40,14 @@ describe('JiraTicketOverlay', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  it('renders standard Jira descriptions containing only media', () => {
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>();
+    render(<JiraTicketOverlay ticket={linkedTicket({ descriptionAdf: { type: 'doc', version: 1, content: [
+      { type: 'mediaSingle', content: [{ type: 'media', attrs: { alt: 'Design diagram' } }] },
+    ] } })} isHost={false} jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
+    expect(screen.getByRole('link', { name: 'Design diagram' })).toHaveAttribute('href', 'https://team.atlassian.net/browse/TEAM-7');
+  });
+
   it('shows imported custom descriptions to non-hosts and hides empty fields', () => {
     const request = vi.fn<(request: unknown) => Promise<JiraResult>>();
     render(<JiraTicketOverlay ticket={linkedTicket({ descriptionAdf: adfOf('  '), extraFields: [
@@ -78,6 +86,39 @@ describe('JiraTicketOverlay', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading the latest details from Jira');
     expect(await screen.findByRole('heading', { name: 'Updated title' })).toBeInTheDocument();
     expect(screen.getByText('Updated description')).toBeInTheDocument();
+  });
+
+  it('refreshes room ticket details without replacing an active edit draft', async () => {
+    const mentionedDescription: AdfDocument = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [
+      { type: 'mention', attrs: { text: '@Alex' } },
+      { type: 'text', text: ' ' },
+      { type: 'emoji', attrs: { shortName: ':rocket:' } },
+    ] }] };
+    const initial = linkedTicket({ descriptionAdf: mentionedDescription, extraFields: [
+      { id: 'customfield_1', name: 'Acceptance Criteria', adf: adfOf('Initial criteria') },
+    ] });
+    const updated = linkedTicket({ title: 'Broadcast title', descriptionAdf: adfOf('Broadcast description'), extraFields: [
+      { id: 'customfield_1', name: 'Acceptance Criteria', adf: adfOf('Broadcast criteria') },
+    ] });
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>().mockResolvedValue({
+      detail: { title: initial.title, descriptionAdf: mentionedDescription, extraFields: initial.extraFields },
+    });
+    const user = userEvent.setup();
+    const props = { isHost: true, jiraStatus: connectedStatus, request, onClose: vi.fn() };
+    const { rerender } = render(<JiraTicketOverlay ticket={initial} {...props} />);
+    await screen.findByText('Initial criteria');
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Description')).toHaveValue('@Alex :rocket:');
+    await user.clear(screen.getByLabelText('Title'));
+    await user.type(screen.getByLabelText('Title'), 'Unsaved draft');
+
+    rerender(<JiraTicketOverlay ticket={updated} {...props} />);
+
+    expect(screen.getByLabelText('Title')).toHaveValue('Unsaved draft');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('heading', { name: 'Broadcast title' })).toBeInTheDocument();
+    expect(screen.getByText('Broadcast description')).toBeInTheDocument();
+    expect(screen.getByText('Broadcast criteria')).toBeInTheDocument();
   });
 
   it('coalesces duplicate concurrent detail fetches for the same ticket (e.g. StrictMode double-invoked effects) into one request', async () => {

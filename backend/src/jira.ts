@@ -139,8 +139,14 @@ function numericValue(issue: unknown, fieldId: string): number | null {
 /** Flattens an ADF document to plain text; paragraphs/headings/list items become lines, separated by a blank line. */
 function adfToPlainText(doc: AdfDocument): string {
   const blocks: string[] = [];
-  const textOf = (node: AdfNode): string =>
-    node.type === 'text' ? node.text ?? '' : node.type === 'hardBreak' ? '\n' : (node.content ?? []).map(textOf).join('');
+  const textOf = (node: AdfNode): string => {
+    if (node.type === 'text') return node.text ?? '';
+    if (node.type === 'hardBreak') return '\n';
+    if (node.type === 'mention') return typeof node.attrs?.text === 'string' ? node.attrs.text : 'Mention in Jira';
+    if (node.type === 'emoji') return typeof node.attrs?.text === 'string' ? node.attrs.text
+      : typeof node.attrs?.shortName === 'string' ? node.attrs.shortName : '';
+    return (node.content ?? []).map(textOf).join('');
+  };
   const walk = (node: AdfNode): void => {
     if (['paragraph', 'heading', 'listItem', 'blockquote', 'codeBlock'].includes(node.type)) {
       const text = (node.content ?? []).map(textOf).join('');

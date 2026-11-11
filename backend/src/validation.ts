@@ -11,6 +11,7 @@ export const STORY_POINT_VALUES = [1, 2, 3, 5, 8, 13, 20] as const;
 export const MAX_JIRA_TITLE_LENGTH = 255;
 export const MAX_JIRA_EDIT_TEXT_LENGTH = 50_000;
 export const MAX_JIRA_EXTRA_FIELDS = 10;
+export const MAX_JIRA_EDIT_MESSAGE_BYTES = MAX_JIRA_EDIT_TEXT_LENGTH * (MAX_JIRA_EXTRA_FIELDS + 1) * 6 + 16 * 1024;
 const MAX_TICKET_ID_LENGTH = 64;
 
 const charLength = (value: string): number => Array.from(value).length;

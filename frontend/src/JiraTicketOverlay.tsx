@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasJiraText, isRelevantJiraField, JiraDescription, JiraIssueLink } from './JiraDescription';
+import { hasJiraText, hasRenderableJiraContent, isRelevantJiraField, JiraDescription, JiraIssueLink } from './JiraDescription';
 import { jiraEditTextError, jiraTitleError } from './validation';
 import type { AdfDocument, AdfNode, JiraEditPreview, JiraExtraField, JiraRequest, JiraResult, JiraStatus, RoomTicket } from './types';
 
@@ -24,7 +24,14 @@ function fetchDetailsOnce(request: Request, ticketId: string): Promise<JiraResul
 /** Flattens an ADF document to plain text for editing; paragraphs/headings/list items become lines. */
 function adfToPlainText(doc: AdfDocument): string {
   const blocks: string[] = [];
-  const textOf = (node: AdfNode): string => (node.type === 'text' ? node.text ?? '' : node.type === 'hardBreak' ? '\n' : (node.content ?? []).map(textOf).join(''));
+  const textOf = (node: AdfNode): string => {
+    if (node.type === 'text') return node.text ?? '';
+    if (node.type === 'hardBreak') return '\n';
+    if (node.type === 'mention') return typeof node.attrs?.text === 'string' ? node.attrs.text : 'Mention in Jira';
+    if (node.type === 'emoji') return typeof node.attrs?.text === 'string' ? node.attrs.text
+      : typeof node.attrs?.shortName === 'string' ? node.attrs.shortName : '';
+    return (node.content ?? []).map(textOf).join('');
+  };
   const walk = (node: AdfNode): void => {
     if (['paragraph', 'heading', 'listItem', 'blockquote', 'codeBlock'].includes(node.type)) {
       const text = (node.content ?? []).map(textOf).join('');
@@ -123,6 +130,13 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
     closeButton.current?.focus();
     return () => { live.current = false; };
   }, []);
+
+  useEffect(() => {
+    setTitle(ticket.title);
+    setDescriptionAdf(ticket.descriptionAdf);
+    setExtraFields((ticket.extraFields ?? []).filter((field) => isRelevantJiraField(field.name))
+      .sort((first, second) => Number(/description/i.test(second.name)) - Number(/description/i.test(first.name))));
+  }, [ticket.title, ticket.descriptionAdf, ticket.extraFields]);
 
   useEffect(() => {
     if (!canEditJira) return;
@@ -234,7 +248,7 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
         {feedback && <p role={feedback.error ? 'alert' : 'status'}>{feedback.message}</p>}
         {!editing ? (
           <div className="ticket-overlay-content">
-            {ticket.jira ? descriptionAdf && hasJiraText(descriptionAdf) && (
+            {ticket.jira ? descriptionAdf && hasRenderableJiraContent(descriptionAdf) && (
               <JiraDescription document={descriptionAdf} issueUrl={ticket.jira.url} />
             ) : ticket.description && <p>{ticket.description}</p>}
             {ticket.jira && extraFields.filter((field) => hasJiraText(field.adf)).map((field) => (

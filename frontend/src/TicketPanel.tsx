@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'reac
 import type { RoomTicket, TicketFields, TicketType } from './types';
 import { MAX_TICKETS, ticketDescriptionError, ticketTitleError } from './validation';
 import { VoteResults } from './VoteResults';
-import { hasJiraText, JiraDescription, JiraIssueLink } from './JiraDescription';
+import { hasJiraText, hasRenderableJiraContent, JiraDescription, JiraIssueLink } from './JiraDescription';
 
 export const TYPE_LABELS: Record<TicketType, string> = { story: 'Story', spike: 'Spike', bug: 'Bug', task: 'Task' };
 
@@ -237,7 +237,7 @@ function TicketItem({ ticket, active, isHost, onEdit, onRemove, onSelect, onExpa
             <strong>{ticket.title}</strong>
           </p>
           {ticket.jira && <JiraIssueLink url={ticket.jira.url}>{ticket.jira.key}</JiraIssueLink>}
-          {ticket.jira && ticket.descriptionAdf && hasJiraText(ticket.descriptionAdf) ? (
+          {ticket.jira && ticket.descriptionAdf && hasRenderableJiraContent(ticket.descriptionAdf) ? (
             <JiraDescription document={ticket.descriptionAdf} issueUrl={ticket.jira.url} />
           ) : ticket.description && <p className="ticket-description">{ticket.description}</p>}
           {ticket.jira && ticket.extraFields?.filter((field) => /description/i.test(field.name) && hasJiraText(field.adf)).map((field) => (

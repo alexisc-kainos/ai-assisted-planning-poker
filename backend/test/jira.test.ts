@@ -993,6 +993,30 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     expect(ticket.descriptionAdf).toEqual(result.detail?.descriptionAdf);
   });
 
+  it('preserves mention and emoji labels in description and custom-field text', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.editable.customfield_20001 = { operations: ['set'] };
+    const adf = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [
+      { type: 'mention', attrs: { text: '@Alex' } },
+      { type: 'text', text: ' ' },
+      { type: 'emoji', attrs: { shortName: ':rocket:' } },
+    ] }] };
+    context.state.issue.fields.description = adf;
+    context.state.extraFieldValues.customfield_20001 = adf;
+    const ticket = await linkedTicket(context);
+
+    const result = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: '@Alex :rocket: updated',
+      extraFields: { customfield_20001: '@Alex :rocket: updated' },
+    });
+
+    expect(result.editPreview?.changes).toEqual([
+      { fieldId: 'description', fieldName: 'Description', from: '@Alex :rocket:', to: '@Alex :rocket: updated' },
+      { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: '@Alex :rocket:', to: '@Alex :rocket: updated' },
+    ]);
+  });
+
   it('displays a matching field even when it is not on the issue edit screen, but rejects editing it', async () => {
     const context = fixture();
     context.state.fields.push(acField);
