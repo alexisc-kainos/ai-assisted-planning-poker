@@ -611,8 +611,14 @@ export class JiraService {
         title: verified.title, descriptionAdf: verified.descriptionAdf,
         extraFields: verifiedExtraFields.length ? verifiedExtraFields : undefined,
       });
-      const matches = verified.title === values.title && verified.description === values.description &&
-        fields.every((field) => verified.extras.find((extra) => extra.id === field.id)?.text === (values.extraFields[field.id] ?? ''));
+      const verifiedValues: Record<string, string> = { summary: verified.title, description: verified.description };
+      for (const extra of verified.extras) verifiedValues[extra.id] = extra.text;
+      const matches = preview.changes.every((change) => {
+        const expected = body[change.fieldId];
+        if (typeof expected === 'string') return verifiedValues[change.fieldId] === expected;
+        const text = adfToPlainText(expected as AdfDocument);
+        return verifiedValues[change.fieldId] === (change.fieldId === 'description' ? text : text.trim());
+      });
       return matches ? { written: true } : { written: false, uncertain: true };
     } catch (error) {
       if (!putSucceeded && error instanceof Error && /not permitted|not found|rate limiting/.test(error.message)) throw error;
