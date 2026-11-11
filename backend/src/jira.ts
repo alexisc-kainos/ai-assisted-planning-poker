@@ -175,7 +175,7 @@ function textFieldValue(issue: unknown, fieldId: string): TextFieldValue | null 
   if (value === null || value === undefined) return null;
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    return trimmed ? { text: trimmed, adf: plainTextToAdf(trimmed), kind: 'string' } : null;
+    return trimmed ? { text: trimmed, adf: validateJiraDescription(plainTextToAdf(trimmed)), kind: 'string' } : null;
   }
   if (!record(value) || value.type !== 'doc') return null;
   const adf = validateJiraDescription(value);
