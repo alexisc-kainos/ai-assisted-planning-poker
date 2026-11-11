@@ -48,6 +48,15 @@ describe('JiraTicketOverlay', () => {
     expect(screen.getByRole('link', { name: 'Design diagram' })).toHaveAttribute('href', 'https://team.atlassian.net/browse/TEAM-7');
   });
 
+  it('keeps attachments alongside placeholder text in Jira descriptions', () => {
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>();
+    render(<JiraTicketOverlay ticket={linkedTicket({ descriptionAdf: { type: 'doc', version: 1, content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'Given ... When ... Then ...' }] },
+      { type: 'mediaSingle', content: [{ type: 'media', attrs: { alt: 'Design diagram' } }] },
+    ] } })} isHost={false} jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
+    expect(screen.getByRole('link', { name: 'Design diagram' })).toHaveAttribute('href', 'https://team.atlassian.net/browse/TEAM-7');
+  });
+
   it('shows imported custom descriptions to non-hosts and hides empty fields', () => {
     const request = vi.fn<(request: unknown) => Promise<JiraResult>>();
     render(<JiraTicketOverlay ticket={linkedTicket({ descriptionAdf: adfOf('  '), extraFields: [
@@ -171,6 +180,24 @@ describe('JiraTicketOverlay', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByLabelText('Acceptance Criteria')).toHaveValue('Given ...\nWhen ...\nThen ...');
+  });
+
+  it('keeps embedded content in placeholder and non-text custom fields', () => {
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>();
+    render(<JiraTicketOverlay ticket={linkedTicket({ extraFields: [
+      { id: 'customfield_1', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1, content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Given ... When ... Then ...' }] },
+        { type: 'inlineCard', attrs: { url: 'https://example.com/design' } },
+      ] } },
+      { id: 'customfield_2', name: 'Description (Project_Name)', adf: { type: 'doc', version: 1, content: [
+        { type: 'inlineCard', attrs: { url: 'https://example.com/attachment' } },
+      ] } },
+    ] })} isHost={false} jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
+    expect(screen.getByRole('heading', { name: 'Acceptance Criteria' })).toBeInTheDocument();
+      const contentLinks = screen.getAllByRole('link', { name: 'View attachment or embedded content in Jira' });
+      expect(contentLinks).toHaveLength(2);
+      expect(contentLinks[0]).toHaveAttribute('href', 'https://team.atlassian.net/browse/TEAM-7');
+      expect(contentLinks[1]).toHaveAttribute('href', 'https://team.atlassian.net/browse/TEAM-7');
   });
 
   it('still shows a partially filled Given/When/Then field that has real detail', async () => {
