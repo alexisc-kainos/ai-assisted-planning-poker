@@ -398,6 +398,7 @@ describe('RoomPage', () => {
       const tickets = within(screen.getByRole('list', { name: 'Tickets' })).getAllByRole('listitem');
       expect(tickets[0]).toHaveAttribute('aria-current', 'true');
       expect(within(tickets[0]).queryByRole('button', { name: 'Start voting' })).not.toBeInTheDocument();
+      expect(within(tickets[1]).getByRole('button', { name: 'Start voting' })).toHaveClass('accent');
       await user.click(within(tickets[1]).getByRole('button', { name: 'Start voting' }));
 
       await user.click(within(tickets[0]).getByRole('button', { name: 'Edit' }));
@@ -545,7 +546,10 @@ describe('RoomPage', () => {
 
       ws.emit(roomState(null, 'user-b'));
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: 'Reveal votes' }));
+      const revealButton = screen.getByRole('button', { name: 'Reveal votes' });
+      expect(revealButton).toHaveClass('reveal');
+      expect(revealButton.closest('section')).toHaveClass('voting-controls');
+      await user.click(revealButton);
       await user.click(screen.getByRole('button', { name: 'Reset votes' }));
 
       expect(ws.sent.slice(-2)).toEqual([{ type: 'reveal' }, { type: 'reset' }]);

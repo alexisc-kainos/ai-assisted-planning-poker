@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { hasJiraText, hasRenderableJiraContent, isRelevantJiraField, JiraDescription, JiraIssueLink } from './JiraDescription';
+import { hasRenderableJiraContent, isRelevantJiraField, JiraDescription, JiraIssueLink } from './JiraDescription';
 import { jiraEditTextError, jiraTitleError } from './validation';
 import type { AdfDocument, AdfNode, JiraEditPreview, JiraExtraField, JiraRequest, JiraResult, JiraStatus, RoomTicket } from './types';
 
@@ -50,6 +50,31 @@ function plainTextToAdf(text: string): AdfDocument {
   return { type: 'doc', version: 1, content: paragraphs.map((paragraph) => ({ type: 'paragraph', content: paragraph.split(/\r?\n/).flatMap((line, index) => [
     ...(index ? [{ type: 'hardBreak' }] : []), ...(line ? [{ type: 'text', text: line }] : []),
   ]) })) };
+}
+
+const GWT_KEYWORD = /\b(given|when|then|and|but)\b/i;
+const GWT_KEYWORDS_GLOBAL = /\b(given|when|then|and|but)\b/gi;
+const PLACEHOLDER_FILLER = /[.\-_*…:;<>[\](),]/g;
+const ADF_TEXT_NODE_TYPES = new Set(['text', 'mention', 'emoji', 'hardBreak']);
+const ADF_CONTAINER_NODE_TYPES = new Set([
+  'doc', 'paragraph', 'heading', 'bulletList', 'orderedList', 'listItem', 'blockquote', 'codeBlock',
+  'table', 'tableRow', 'tableHeader', 'tableCell', 'panel',
+]);
+
+function hasMeaningfulNonTextContent(node: AdfNode): boolean {
+  if (ADF_TEXT_NODE_TYPES.has(node.type)) return false;
+  if (!ADF_CONTAINER_NODE_TYPES.has(node.type)) return true;
+  return node.content?.some(hasMeaningfulNonTextContent) ?? false;
+}
+
+/** True when the document is just an unfilled Given/When/Then template, with no real detail. */
+function isGwtPlaceholder(doc: AdfDocument): boolean {
+  if (hasMeaningfulNonTextContent(doc)) return false;
+  const text = adfToPlainText(doc);
+  if (!GWT_KEYWORD.test(text)) return false;
+  const withoutKeywords = text.replace(GWT_KEYWORDS_GLOBAL, ' ');
+  const meaningful = withoutKeywords.replace(PLACEHOLDER_FILLER, '').replace(/\s+/g, '');
+  return meaningful.length === 0;
 }
 
 function EditConfirmDialog({ preview, busy, onConfirm, onCancel, returnFocus }: {
@@ -244,23 +269,25 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
         </div>
         {ticket.jira && <JiraIssueLink url={ticket.jira.url}>{ticket.jira.key}</JiraIssueLink>}
         {loading && <p role="status">Loading the latest details from Jira...</p>}
-        {loadError && <p role="alert">{loadError}</p>}
+        {loadError && <p className="notice error" role="alert">{loadError}</p>}
         {feedback && <p role={feedback.error ? 'alert' : 'status'}>{feedback.message}</p>}
         {!editing ? (
-          <div className="ticket-overlay-content">
-            {ticket.jira ? descriptionAdf && hasRenderableJiraContent(descriptionAdf) && (
-              <JiraDescription document={descriptionAdf} issueUrl={ticket.jira.url} />
-            ) : ticket.description && <p>{ticket.description}</p>}
-            {ticket.jira && extraFields.filter((field) => hasJiraText(field.adf)).map((field) => (
-              <section key={field.id} aria-labelledby={`extra-field-${field.id}-heading`}>
-                <h3 id={`extra-field-${field.id}-heading`}>{field.name}</h3>
-                <JiraDescription document={field.adf} issueUrl={ticket.jira!.url} />
-              </section>
-            ))}
+          <>
+            <div className="ticket-overlay-content">
+              {ticket.jira ? descriptionAdf && hasRenderableJiraContent(descriptionAdf) && !isGwtPlaceholder(descriptionAdf) && (
+                <JiraDescription document={descriptionAdf} issueUrl={ticket.jira.url} />
+              ) : ticket.description && <p>{ticket.description}</p>}
+              {ticket.jira && extraFields.filter((field) => hasRenderableJiraContent(field.adf) && !isGwtPlaceholder(field.adf)).map((field) => (
+                <section key={field.id} aria-labelledby={`extra-field-${field.id}-heading`}>
+                  <h3 id={`extra-field-${field.id}-heading`}>{field.name}</h3>
+                  <JiraDescription document={field.adf} issueUrl={ticket.jira!.url} />
+                </section>
+              ))}
+            </div>
             {canEditJira && jiraStatus?.connected && (
               <button type="button" className="ticket-overlay-edit" onClick={startEditing} disabled={loading}>Edit</button>
             )}
-          </div>
+          </>
         ) : (
           <form className="ticket-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
             <div className="field">

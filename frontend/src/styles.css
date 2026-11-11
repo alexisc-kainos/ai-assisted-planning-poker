@@ -2,7 +2,7 @@
  * Riverside Lounge theme (PPK-35), tokens from the PPK-34 concept A mockup.
  * Contrast (WCAG 2.2): --ink on --bg 11.9:1, on --surface 12.9:1; --muted on --bg 6.0:1;
  * white on --teal 6.2:1; --teal on --bg 5.4:1; --field border vs white 4.4:1; --focus vs --bg 7.5:1;
- * white on --accent 5.0:1.
+ * white on --accent 5.0:1; white on --reveal 7.9:1.
  */
 :root {
   --bg: #f4efe6;
@@ -14,6 +14,9 @@
   --teal-soft: #e3ece7;
   --accent: #b5531d;
   --accent-dark: #8f4216;
+  --accent-soft: #f6e4d4;
+  --reveal: #7a3b6b;
+  --reveal-dark: #5e2d52;
   --line: #d6cfc2;
   --field: #6f7b79;
   --focus: #1d4f7a;
@@ -53,6 +56,12 @@
   display: grid;
   gap: 0.75rem;
   min-width: 0;
+}
+
+/* Distinguishes the Jira panel from other room-side panels. */
+.card.jira-panel {
+  background: var(--teal-soft);
+  border-color: var(--teal);
 }
 
 .jira-panel :is(input, select),
@@ -229,6 +238,7 @@
   flex: 1;
   min-height: 0;
   gap: 0.75rem;
+  overflow-y: auto;
   overflow-wrap: anywhere;
 }
 
@@ -238,23 +248,16 @@
   overflow-y: auto;
 }
 
-.ticket-overlay-content > .jira-description {
-  flex: 1;
-  min-height: 0;
+/* Fields scroll together with the content area, not as their own independent scroll boxes. */
+.ticket-overlay-content > .jira-description,
+.ticket-overlay-content section .jira-description {
   max-height: none;
+  overflow-y: visible;
 }
 
 .ticket-overlay-content section {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-
-.ticket-overlay-content section .jira-description {
-  flex: 1;
-  min-height: 0;
-  max-height: none;
 }
 
 .ticket-overlay-edit {
@@ -452,6 +455,18 @@ button.accent {
 button.accent:hover:not(:disabled) {
   background: var(--accent-dark);
   border-color: var(--accent-dark);
+}
+
+/* Plum accent for Reveal votes, kept visually distinct from the Start voting accent colour. */
+button.reveal {
+  background: var(--reveal);
+  border-color: var(--reveal);
+  color: #fff;
+}
+
+button.reveal:hover:not(:disabled) {
+  background: var(--reveal-dark);
+  border-color: var(--reveal-dark);
 }
 
 button:disabled {
@@ -724,6 +739,12 @@ textarea[aria-invalid='true'] {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+/* Distinguishes the voting controls panel from other room-side panels. */
+.card.voting-controls {
+  background: var(--accent-soft);
+  border-color: var(--accent);
 }
 
 .room-tickets > .card {

@@ -104,10 +104,10 @@ export function RoomPage({ roomId }: { roomId: string }) {
           {isHost && <JiraPanel status={jiraStatus} state={state} request={jiraRequest}
             estimateFeedback={jiraEstimateFeedback} setEstimateFeedback={updateJiraEstimateFeedback} />}
           {isHost && (
-            <section className="card" aria-labelledby="voting-controls-heading">
+            <section className="card voting-controls" aria-labelledby="voting-controls-heading">
               <h2 id="voting-controls-heading">Voting controls</h2>
               <div className="vote-actions">
-                <button type="button" className="accent" onClick={reveal}>Reveal votes</button>
+                <button type="button" className="reveal" onClick={reveal}>Reveal votes</button>
                 <button type="button" onClick={reset}>Reset votes</button>
               </div>
             </section>
