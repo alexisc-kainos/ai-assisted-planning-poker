@@ -216,8 +216,8 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
       <div className="card ticket-overlay" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="ticket-overlay-heading"
         onKeyDown={(event) => {
           if (event.key === 'Escape' && !preview) { event.preventDefault(); onClose(); }
-          if (event.key !== 'Tab') return;
-          const controls = dialog.current?.querySelectorAll<HTMLElement>('a[href],button,input,textarea');
+          if (event.key !== 'Tab' || preview) return;
+          const controls = dialog.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"]):not(:disabled)');
           if (!controls?.length) return;
           const first = controls[0];
           const last = controls[controls.length - 1];
