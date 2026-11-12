@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Jira ticket header — 3 layout concepts</title>
+    <style>
+      :root {
+        /* Real tokens copied from frontend/src/styles.css (Riverside Lounge theme) */
+        --bg: #f4efe6;
+        --surface: #fbf8f2;
+        --ink: #23302f;
+        --muted: #4f5d5b;
+        --teal: #2f6b62;
+        --teal-dark: #24564f;
+        --teal-soft: #e3ece7;
+        --line: #d6cfc2;
+        --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+        --sans: 'Avenir Next', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        font: 16px/1.5 var(--sans);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      main {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 32px 0 64px;
+      }
+      h1, h2, h3 { font-family: var(--serif); line-height: 1.2; margin: 0; }
+      h1 { max-width: 760px; margin-bottom: 8px; font-size: clamp(1.8rem, 4vw, 2.6rem); }
+      h2 { font-size: 1.4rem; margin-bottom: 4px; }
+      h3 { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 10px; }
+      p { margin: 0; }
+      a { color: var(--teal-dark); }
+      .intro { display: grid; gap: 10px; max-width: 760px; margin-bottom: 28px; }
+      .note {
+        padding: 12px 16px;
+        border-left: 4px solid var(--teal);
+        border-radius: 0 10px 10px 0;
+        background: var(--surface);
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+      .concept {
+        margin-bottom: 48px;
+        padding: 24px;
+        border-radius: 16px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+      }
+      .concept-summary { margin-bottom: 20px; max-width: 70ch; color: var(--muted); }
+      .demos { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+      .demo {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .demo-label { display: block; margin-bottom: 10px; }
+      .viewport {
+        border: 1px dashed var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--bg);
+      }
+      .viewport.narrow { max-width: 220px; }
+      .viewport-caption { font-size: 0.75rem; color: var(--muted); margin-bottom: 8px; display: block; }
+
+      /* ---------- Shared "box" skeleton reused by all 3 concepts ---------- */
+      .jira-ticket-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        min-width: 0;
+      }
+      .jira-ticket-title {
+        flex: 1 1 0%;
+        min-width: 0;
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0.3rem 0.7rem;
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .jira-ticket-key {
+        display: inline-block;
+        flex: 0 0 auto;
+        white-space: nowrap;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      @media (max-width: 480px) {
+        .jira-ticket-header { flex-direction: column; align-items: flex-start; }
+        .jira-ticket-title { flex: 0 1 auto; }
+      }
+
+      /* Concept A — subtle outline tag */
+      .concept-a .jira-ticket-key {
+        border: 1.5px solid var(--teal);
+        color: var(--teal-dark);
+        border-radius: 6px;
+        padding: 0.25rem 0.6rem;
+      }
+
+      /* Concept B — soft pill, matching the existing .badge family */
+      .concept-b .jira-ticket-key {
+        background: var(--teal-soft);
+        color: var(--teal-dark);
+        border-radius: 999px;
+        padding: 0.25rem 0.8rem;
+      }
+
+      /* Concept C — solid filled box, strongest separation */
+      .concept-c .jira-ticket-key {
+        background: var(--teal);
+        color: #fff;
+        border-radius: 8px;
+        padding: 0.25rem 0.7rem;
+      }
+
+      /* ---------- Mock context chrome (just enough to show placement) ---------- */
+      .mock-badges { display: flex; gap: 0.3rem; margin-bottom: 0.5rem; }
+      .mock-badge {
+        display: inline-block;
+        background: #ece7dd;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 0.1rem 0.65rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .mock-overlay-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
+      }
+      .mock-close { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 0.2rem 0.6rem; font-size: 0.85rem; }
+      .mock-eyebrow { display: block; margin-bottom: 0.35rem; font-family: var(--sans); font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="intro">
+        <h1>Jira ticket header — 3 layout concepts</h1>
+        <p class="note">
+          For review: the Jira issue key and ticket title currently render on separate lines in the ticket list,
+          the "Now voting" panel and the ticket overlay. All 3 concepts below apply the same box pattern — key box
+          before a title box, same line when space allows, wrapping (not truncating) on narrow screens — and only
+          differ in how strongly the key box stands out. Each context is shown at a normal width and a narrow
+          (~220px) width to preview the wrap behaviour.
+        </p>
+      </div>
+
+      <section class="concept concept-a">
+        <h2>Concept A — Outline tag</h2>
+        <p class="concept-summary">Thin teal outline, no fill. Lowest visual weight — the title box stays the main focus.</p>
+        <div class="demos">
+          <div class="demo">
+            <span class="demo-label"><strong>Ticket list row</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <div class="mock-badges"><span class="mock-badge">Story</span></div>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+          </div>
+          <div class="demo">
+            <span class="demo-label"><strong>Now voting panel</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <span class="mock-eyebrow">Now voting</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <span class="mock-eyebrow">Now voting</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+          </div>
+          <div class="demo">
+            <span class="demo-label"><strong>Ticket overlay header</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <div class="mock-overlay-header">
+                <div class="jira-ticket-header">
+                  <a class="jira-ticket-key" href="#">TEAM-482</a>
+                  <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+                </div>
+                <button class="mock-close" type="button">Close</button>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <div class="mock-overlay-header">
+                <div class="jira-ticket-header">
+                  <a class="jira-ticket-key" href="#">TEAM-482</a>
+                  <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+                </div>
+                <button class="mock-close" type="button">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="concept concept-b">
+        <h2>Concept B — Soft pill badge</h2>
+        <p class="concept-summary">Pill shape with a soft teal fill, matching the visual language already used by the existing type/status badges elsewhere on a ticket.</p>
+        <div class="demos">
+          <div class="demo">
+            <span class="demo-label"><strong>Ticket list row</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <div class="mock-badges"><span class="mock-badge">Story</span></div>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+          </div>
+          <div class="demo">
+            <span class="demo-label"><strong>Now voting panel</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <span class="mock-eyebrow">Now voting</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <span class="mock-eyebrow">Now voting</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+          </div>
+          <div class="demo">
+            <span class="demo-label"><strong>Ticket overlay header</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <div class="mock-overlay-header">
+                <div class="jira-ticket-header">
+                  <a class="jira-ticket-key" href="#">TEAM-482</a>
+                  <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+                </div>
+                <button class="mock-close" type="button">Close</button>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <div class="mock-overlay-header">
+                <div class="jira-ticket-header">
+                  <a class="jira-ticket-key" href="#">TEAM-482</a>
+                  <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+                </div>
+                <button class="mock-close" type="button">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="concept concept-c">
+        <h2>Concept C — Solid filled box</h2>
+        <p class="concept-summary">Solid teal fill with white text, squared-off corners. The strongest visual separation of the 3 — reads first before the title.</p>
+        <div class="demos">
+          <div class="demo">
+            <span class="demo-label"><strong>Ticket list row</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <div class="mock-badges"><span class="mock-badge">Story</span></div>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+          </div>
+          <div class="demo">
+            <span class="demo-label"><strong>Now voting panel</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <span class="mock-eyebrow">Now voting</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <span class="mock-eyebrow">Now voting</span>
+              <div class="jira-ticket-header">
+                <a class="jira-ticket-key" href="#">TEAM-482</a>
+                <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+              </div>
+            </div>
+          </div>
+          <div class="demo">
+            <span class="demo-label"><strong>Ticket overlay header</strong></span>
+            <div class="viewport">
+              <span class="viewport-caption">Normal width</span>
+              <div class="mock-overlay-header">
+                <div class="jira-ticket-header">
+                  <a class="jira-ticket-key" href="#">TEAM-482</a>
+                  <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+                </div>
+                <button class="mock-close" type="button">Close</button>
+              </div>
+            </div>
+            <div class="viewport narrow" style="margin-top:10px">
+              <span class="viewport-caption">Narrow (~220px)</span>
+              <div class="mock-overlay-header">
+                <div class="jira-ticket-header">
+                  <a class="jira-ticket-key" href="#">TEAM-482</a>
+                  <span class="jira-ticket-title">Allow hosts to reorder the ticket queue during an active vote</span>
+                </div>
+                <button class="mock-close" type="button">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

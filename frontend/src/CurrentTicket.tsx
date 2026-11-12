@@ -1,5 +1,5 @@
 import { Mascot } from './Mascot';
-import { JiraIssueLink } from './JiraDescription';
+import { JiraTicketHeader } from './JiraTicketHeader';
 import { ExpandTicketButton, TYPE_LABELS } from './TicketPanel';
 import type { RoomTicket } from './types';
 
@@ -20,10 +20,18 @@ export function CurrentTicket({ tickets, activeTicketId, isHost, onExpand }: Cur
           <span className="badge">{TYPE_LABELS[active.type]}</span>
           <ExpandTicketButton onExpand={() => onExpand(active.id)} />
         </div>
-        <p className="now-voting">
-          <strong>Now voting:</strong> {active.title}
-        </p>
-        {active.jira && <JiraIssueLink url={active.jira.url}>{active.jira.key}</JiraIssueLink>}
+        {active.jira ? (
+          <>
+            <p className="now-voting">
+              <strong>Now voting:</strong>
+            </p>
+            <JiraTicketHeader jiraKey={active.jira.key} jiraUrl={active.jira.url} title={active.title} />
+          </>
+        ) : (
+          <p className="now-voting">
+            <strong>Now voting:</strong> {active.title}
+          </p>
+        )}
       </section>
     );
   }
