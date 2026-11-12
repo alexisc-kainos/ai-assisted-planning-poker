@@ -162,6 +162,10 @@
     align-items: flex-start;
   }
 
+  .ticket-overlay-header:has(.jira-ticket-header) {
+    flex-direction: column;
+  }
+
   .jira-ticket-title {
     flex: 0 1 auto;
   }
