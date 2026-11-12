@@ -273,7 +273,7 @@ describe('TicketPanel', () => {
     return { ...handlers, update: (next: Partial<Parameters<typeof TicketPanel>[0]>) => rerender(panel(next)) };
   };
 
-  it('shows populated Jira text fields in the ticket preview', () => {
+  it('shows populated Jira text fields in the ticket preview without their field name labels', () => {
     const jiraTicket: RoomTicket = {
       ...ticket('t1', 'Imported'),
       jira: { cloudId: 'cloud', issueId: '1', key: 'TEAM-1', url: 'https://team.atlassian.net/browse/TEAM-1' },
@@ -295,7 +295,7 @@ describe('TicketPanel', () => {
     };
     renderPanel({ tickets: [jiraTicket] });
     expect(screen.getByRole('link', { name: 'Architecture diagram' })).toHaveAttribute('href', 'https://team.atlassian.net/browse/TEAM-1');
-    expect(screen.getByText('Description (Project_Name)')).toBeInTheDocument();
+    expect(screen.queryByText('Description (Project_Name)')).not.toBeInTheDocument();
     expect(screen.getByText('Project details')).toBeInTheDocument();
     expect(screen.queryByText('Empty description')).not.toBeInTheDocument();
     expect(screen.queryByText('Customer value')).not.toBeInTheDocument();

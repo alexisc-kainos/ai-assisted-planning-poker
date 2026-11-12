@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { hasRenderableJiraContent, isRelevantJiraField, JiraDescription, JiraIssueLink } from './JiraDescription';
+import { JiraTicketHeader } from './JiraTicketHeader';
 import { jiraEditTextError, jiraTitleError } from './validation';
 import type { AdfDocument, AdfNode, JiraEditPreview, JiraExtraField, JiraRequest, JiraResult, JiraStatus, RoomTicket } from './types';
 
@@ -264,10 +265,20 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
         }}>
         <div className="ticket-overlay-header">
-          <h2 id="ticket-overlay-heading">{editing ? 'Edit ticket' : title}</h2>
+          {ticket.jira && !editing ? (
+            <JiraTicketHeader jiraKey={ticket.jira.key} jiraUrl={ticket.jira.url} title={<h2 id="ticket-overlay-heading">{title}</h2>} />
+          ) : ticket.jira ? (
+            <div className="jira-ticket-header">
+              <JiraIssueLink url={ticket.jira.url}>
+                <span className="jira-ticket-key">{ticket.jira.key}</span>
+              </JiraIssueLink>
+              <h2 id="ticket-overlay-heading">Edit ticket</h2>
+            </div>
+          ) : (
+            <h2 id="ticket-overlay-heading">{editing ? 'Edit ticket' : title}</h2>
+          )}
           <button type="button" ref={closeButton} onClick={onClose} aria-label="Close ticket details">Close</button>
         </div>
-        {ticket.jira && <JiraIssueLink url={ticket.jira.url}>{ticket.jira.key}</JiraIssueLink>}
         {loading && <p role="status">Loading the latest details from Jira...</p>}
         {loadError && <p className="notice error" role="alert">{loadError}</p>}
         {feedback && <p role={feedback.error ? 'alert' : 'status'}>{feedback.message}</p>}
@@ -279,7 +290,7 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
               ) : ticket.description && <p>{ticket.description}</p>}
               {ticket.jira && extraFields.filter((field) => hasRenderableJiraContent(field.adf) && !isGwtPlaceholder(field.adf)).map((field) => (
                 <section key={field.id} aria-labelledby={`extra-field-${field.id}-heading`}>
-                  <h3 id={`extra-field-${field.id}-heading`}>{field.name}</h3>
+                  <h3 id={`extra-field-${field.id}-heading`} className="jira-field-name">{field.name}</h3>
                   <JiraDescription document={field.adf} issueUrl={ticket.jira!.url} />
                 </section>
               ))}
@@ -290,26 +301,28 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
           </>
         ) : (
           <form className="ticket-form" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-            <div className="field">
-              <label htmlFor="jira-edit-title">Title</label>
-              <input id="jira-edit-title" type="text" value={draftTitle} disabled={busy}
-                onChange={(event) => setDraftTitle(event.target.value)} />
-              {titleError && <p className="field-error" role="alert">{titleError}</p>}
-            </div>
-            <div className="field">
-              <label htmlFor="jira-edit-description">Description</label>
-              <textarea id="jira-edit-description" rows={6} value={draftDescription} disabled={busy}
-                onChange={(event) => setDraftDescription(event.target.value)} />
-              {descriptionError && <p className="field-error" role="alert">{descriptionError}</p>}
-            </div>
-            {extraFields.map((field, index) => (
-              <div className="field" key={field.id}>
-                <label htmlFor={`jira-edit-extra-${field.id}`}>{field.name}</label>
-                <textarea id={`jira-edit-extra-${field.id}`} rows={6} value={draftExtraFields[field.id] ?? ''} disabled={busy}
-                  onChange={(event) => setDraftExtraFields((current) => ({ ...current, [field.id]: event.target.value }))} />
-                {extraFieldErrors[index] && <p className="field-error" role="alert">{extraFieldErrors[index]}</p>}
+            <div className="ticket-form-fields">
+              <div className="field">
+                <label htmlFor="jira-edit-title">Title</label>
+                <input id="jira-edit-title" type="text" value={draftTitle} disabled={busy}
+                  onChange={(event) => setDraftTitle(event.target.value)} />
+                {titleError && <p className="field-error" role="alert">{titleError}</p>}
               </div>
-            ))}
+              <div className="field">
+                <label htmlFor="jira-edit-description">Description</label>
+                <textarea id="jira-edit-description" rows={6} value={draftDescription} disabled={busy}
+                  onChange={(event) => setDraftDescription(event.target.value)} />
+                {descriptionError && <p className="field-error" role="alert">{descriptionError}</p>}
+              </div>
+              {extraFields.map((field, index) => (
+                <div className="field" key={field.id}>
+                  <label htmlFor={`jira-edit-extra-${field.id}`}>{field.name}</label>
+                  <textarea id={`jira-edit-extra-${field.id}`} rows={6} value={draftExtraFields[field.id] ?? ''} disabled={busy}
+                    onChange={(event) => setDraftExtraFields((current) => ({ ...current, [field.id]: event.target.value }))} />
+                  {extraFieldErrors[index] && <p className="field-error" role="alert">{extraFieldErrors[index]}</p>}
+                </div>
+              ))}
+            </div>
             <div className="vote-actions">
               <button ref={saveButton} type="submit" className="primary"
                 disabled={busy || !!titleError || !!descriptionError || hasFieldErrors}>Save</button>
