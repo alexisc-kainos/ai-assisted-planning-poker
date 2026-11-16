@@ -42,7 +42,6 @@ export interface JiraResult {
   status?: JiraStatus;
   authorizeUrl?: string;
   ticketId?: string;
-  fields?: JiraField[];
   preview?: JiraPreview;
   written?: boolean;
   uncertain?: boolean;
@@ -465,19 +464,26 @@ export class JiraService {
     return ticket;
   }
 
-  private async editableFields(room: Room, session: Session, ticket: RoomTicket): Promise<JiraField[]> {
+  // Matches by name/schema only: editmeta reflects classic Edit-screen placement, but the actual
+  // write (PUT /issue) ignores screens, so a field missing from editmeta can still be genuinely editable.
+  // Sorted so the closest match to Jira's canonical story-points field comes first.
+  private async editableFields(room: Room, session: Session): Promise<JiraField[]> {
     const fields = await this.api(room, session, '/rest/api/3/field');
     if (!Array.isArray(fields)) throw new Error('Jira returned invalid field metadata');
-    const meta = await this.api(room, session, `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}/editmeta`);
-    const editable = record(meta) && record(meta.fields) ? meta.fields : {};
-    const result: JiraField[] = [];
+    const storyPointsType = 'com.atlassian.jira.plugin.system.customfieldtypes:storypoints';
+    const rank = (field: { name: string; custom?: unknown }) => {
+      if (field.custom === storyPointsType) return 2;
+      if (field.name.trim().toLowerCase() === 'story points') return 1;
+      return 0;
+    };
+    const result: Array<JiraField & { score: number }> = [];
     for (const field of fields) {
       if (!record(field) || typeof field.id !== 'string' || typeof field.name !== 'string' || !record(field.schema) || field.schema.type !== 'number') continue;
-      if (!['story points', 'story point estimate'].includes(field.name.trim().toLowerCase()) && field.schema.custom !== 'com.atlassian.jira.plugin.system.customfieldtypes:storypoints') continue;
-      const edit = editable[field.id];
-      if (record(edit) && Array.isArray(edit.operations) && edit.operations.includes('set')) result.push({ id: field.id, name: field.name });
+      if (!['story points', 'story point estimate'].includes(field.name.trim().toLowerCase()) && field.schema.custom !== storyPointsType) continue;
+      result.push({ id: field.id, name: field.name, score: rank({ name: field.name, custom: field.schema.custom }) });
     }
-    return result;
+    return result.sort((first, second) => second.score - first.score || first.id.localeCompare(second.id))
+      .map(({ id, name }) => ({ id, name }));
   }
 
   private jiraTicket(room: Room, session: Session, ticketId: string): RoomTicket {
@@ -637,12 +643,25 @@ export class JiraService {
     const revision = ticket.revision ?? 0;
     const round = room.round;
     delete session.confirmation;
-    const fields = await this.editableFields(room, session, ticket);
+    const fields = await this.editableFields(room, session);
     if (!fields.length) throw new Error('No editable story-points field was found for this issue. Your estimate is kept.');
-    const field = fieldId ? fields.find((candidate) => candidate.id === fieldId) : fields.length === 1 ? fields[0] : undefined;
-    if (fieldId && !field) throw new Error('The selected story-points field is not editable on this issue');
-    if (!field) return { fields };
-    const issue = await this.api(room, session, `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}?fields=${encodeURIComponent(field.id)}`);
+    // Fields are ranked closest-match-first; select the first one Jira returns for this issue.
+    const candidates = fieldId ? fields.filter((candidate) => candidate.id === fieldId) : fields;
+    if (!candidates.length) throw new Error('The selected story-points field is not editable on this issue');
+    let field: JiraField | undefined;
+    let issue: unknown;
+    for (const candidate of candidates) {
+      const candidateIssue = await this.api(room, session, `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}?fields=${encodeURIComponent(candidate.id)}`);
+      if (record(candidateIssue) && record(candidateIssue.fields) && candidate.id in candidateIssue.fields) {
+        field = candidate;
+        issue = candidateIssue;
+        break;
+      }
+    }
+    if (!field) {
+      if (fieldId) throw new Error('The selected story-points field is not available on this issue');
+      throw new Error('No story-points field was found for this issue. Your estimate is kept.');
+    }
     this.linkedStory(room, session, ticketId);
     if ((ticket.revision ?? 0) !== revision || room.round !== round) throw new Error('The estimate changed. Review it and prepare again.');
     const preview: JiraPreview = {
@@ -664,7 +683,7 @@ export class JiraService {
           room.round !== round || ticket.agreedEstimate !== preview.points) throw new Error('The ticket or estimate changed. Prepare a new confirmation.');
     };
     check();
-    const fields = await this.editableFields(room, session, ticket);
+    const fields = await this.editableFields(room, session);
     if (!fields.some((field) => field.id === preview.fieldId)) throw new Error('The selected field is no longer editable. Your estimate is kept.');
     const issuePath = `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}`;
     const readPath = `${issuePath}?fields=${encodeURIComponent(preview.fieldId)}`;

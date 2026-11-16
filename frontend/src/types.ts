@@ -22,7 +22,6 @@ export interface JiraStatus {
   sites?: JiraSite[];
   reason?: string;
 }
-export interface JiraField { id: string; name: string }
 export interface JiraExtraField { id: string; name: string; adf: AdfDocument }
 export interface JiraEditChange { fieldId: string; fieldName: string; from: string; to: string }
 export interface JiraEditPreview {
@@ -51,7 +50,6 @@ export interface JiraResult {
   status?: JiraStatus;
   authorizeUrl?: string;
   ticketId?: string;
-  fields?: JiraField[];
   suggestions?: Array<{ key: string; summary: string }>;
   preview?: JiraPreview;
   written?: boolean;
