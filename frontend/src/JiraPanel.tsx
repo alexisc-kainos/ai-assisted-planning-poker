@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { STORY_DECK } from './config';
 import { JiraIssueLink, safeJiraUrl } from './JiraDescription';
-import type { JiraField, JiraPreview, JiraRequest, JiraResult, JiraStatus, RoomState, RoomTicket } from './types';
+import type { JiraPreview, JiraRequest, JiraResult, JiraStatus, RoomState, RoomTicket } from './types';
 
 type Request = (request: JiraRequest) => Promise<JiraResult>;
 export type JiraEstimateFeedback = {
@@ -64,8 +64,6 @@ function Confirmation({ preview, onConfirm, onCancel, returnFocus }: {
 
 function JiraEstimate({ ticket, request }: { ticket: RoomTicket; request: Request }) {
   const [points, setPoints] = useState(() => defaultPoints(ticket));
-  const [fields, setFields] = useState<JiraField[]>([]);
-  const [fieldId, setFieldId] = useState('');
   const [preview, setPreview] = useState<JiraPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const live = useRef(true);
@@ -82,8 +80,6 @@ function JiraEstimate({ ticket, request }: { ticket: RoomTicket; request: Reques
     operation.current += 1;
     ownAgreement.current = null;
     setPreview(null);
-    setFields([]);
-    setFieldId('');
     setBusy(false);
   }, [ticket.revision, ticket.agreedEstimate]);
 
@@ -98,14 +94,9 @@ function JiraEstimate({ ticket, request }: { ticket: RoomTicket; request: Reques
         await request({ action: 'agree', ticketId: ticket.id, points: Number(points) });
         if (!live.current || operation.current !== current) return;
       }
-      const result = await request({ action: 'prepare', ticketId: ticket.id, ...(fieldId ? { fieldId } : {}) });
+      const result = await request({ action: 'prepare', ticketId: ticket.id });
       if (!live.current || operation.current !== current) return;
-      if (result.fields) {
-        setFields(result.fields);
-        setFieldId('');
-      } else if (result.preview) {
-        setPreview(result.preview);
-      }
+      if (result.preview) setPreview(result.preview);
     } catch {
       ownAgreement.current = null;
     } finally {
@@ -118,12 +109,7 @@ function JiraEstimate({ ticket, request }: { ticket: RoomTicket; request: Reques
     try {
       const result = await request(action);
       if (!live.current) return;
-      if (result.fields) {
-        setFields(result.fields);
-        setFieldId('');
-      } else if (result.preview) {
-        setPreview(result.preview);
-      }
+      if (result.preview) setPreview(result.preview);
     } catch {
       return;
     } finally {
@@ -143,22 +129,13 @@ function JiraEstimate({ ticket, request }: { ticket: RoomTicket; request: Reques
           <label htmlFor="jira-points">Story points</label>
           <select id="jira-points" value={points} disabled={busy} onChange={(event) => {
             setPoints(event.target.value);
-            setFields([]);
-            setFieldId('');
             setPreview(null);
           }}>
             <option value="">Choose points</option>
             {numericDeck.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
         </div>
-        {fields.length > 0 && <div className="field">
-          <label htmlFor="jira-field">Jira estimate field</label>
-          <select id="jira-field" value={fieldId} disabled={busy} onChange={(event) => setFieldId(event.target.value)}>
-            <option value="">Choose field</option>
-            {fields.map((field) => <option key={field.id} value={field.id}>{field.name} ({field.id})</option>)}
-          </select>
-        </div>}
-        <button ref={reviewButton} type="submit" disabled={busy || !points || (fields.length > 0 && !fieldId)}>Update Jira</button>
+        <button ref={reviewButton} type="submit" disabled={busy || !points}>Update Jira</button>
       </form>
       {preview && <Confirmation preview={preview} returnFocus={reviewButton} onCancel={() => setPreview(null)} onConfirm={() => {
         const confirmationId = preview.id;
