@@ -68,7 +68,9 @@ function fixture() {
       summary: 'Imported story', description: null as unknown, issuetype: { name: 'Story' },
     } },
     resources: [{ ...site, scopes }, { ...otherSite, scopes }],
-    fields: [{ id: 'customfield_10123', name: 'Story Points', schema: { type: 'number' } }],
+    fields: [{ id: 'customfield_10123', name: 'Story Points', schema: { type: 'number' } }] as Array<{
+      id: string; name: string; schema: { type: string; custom?: string };
+    }>,
     editable: { customfield_10123: { operations: ['set'] } } as Record<string, { operations: string[] }>,
     points: 3 as number | null,
     extraFieldValues: {} as Record<string, unknown>,
@@ -99,7 +101,9 @@ function fixture() {
     }
     const fieldsParam = url.searchParams.get('fields');
     if (fieldsParam === 'summary,description,issuetype') return jsonResponse(state.issue);
-    if (fieldsParam && /^customfield_\d+$/.test(fieldsParam)) return jsonResponse({ fields: { [fieldsParam]: state.points } });
+    if (fieldsParam && /^customfield_\d+$/.test(fieldsParam)) {
+      return jsonResponse({ fields: state.missingFields.includes(fieldsParam) ? {} : { [fieldsParam]: state.points } });
+    }
     if (fieldsParam?.startsWith('summary,description')) {
       const extraIds = fieldsParam.split(',').slice(2);
       const fields: Record<string, unknown> = { summary: state.issue.fields.summary, description: state.issue.fields.description };
@@ -850,6 +854,20 @@ describe('explicit agreed estimates and guarded Jira writes', () => {
     const override = await context.act('prepare', { ticketId: ticket.id, fieldId: 'customfield_10124' });
     expect(override.preview?.fieldId).toBe('customfield_10124');
     expect(context.writes()).toHaveLength(0);
+  });
+
+  it('falls back to the highest-ranked story-points field available on the linked issue', async () => {
+    const context = fixture();
+    const ticket = await agreed(context);
+    context.state.fields.push(
+      { id: 'customfield_10125', name: 'Renamed field', schema: { type: 'number', custom: 'com.atlassian.jira.plugin.system.customfieldtypes:storypoints' } },
+      { id: 'customfield_10124', name: 'Story point estimate', schema: { type: 'number' } },
+    );
+    context.state.missingFields.push('customfield_10125');
+    const { preview } = await context.act('prepare', { ticketId: ticket.id });
+    expect(preview).toMatchObject({ fieldId: 'customfield_10123', currentPoints: 3 });
+    expect(context.request.mock.calls.filter(([input]) => String(input).includes('?fields=customfield_')).map(([input]) => String(input).split('?fields=')[1]))
+      .toEqual(['customfield_10125', 'customfield_10123']);
   });
 
   it('previews null points without coercion', async () => {

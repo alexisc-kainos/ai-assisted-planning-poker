@@ -645,10 +645,23 @@ export class JiraService {
     delete session.confirmation;
     const fields = await this.editableFields(room, session);
     if (!fields.length) throw new Error('No editable story-points field was found for this issue. Your estimate is kept.');
-    // Fields are ranked closest-match-first; auto-pick it instead of prompting unless the caller picked one.
-    const field = fieldId ? fields.find((candidate) => candidate.id === fieldId) : fields[0];
-    if (!field) throw new Error('The selected story-points field is not editable on this issue');
-    const issue = await this.api(room, session, `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}?fields=${encodeURIComponent(field.id)}`);
+    // Fields are ranked closest-match-first; select the first one Jira returns for this issue.
+    const candidates = fieldId ? fields.filter((candidate) => candidate.id === fieldId) : fields;
+    if (!candidates.length) throw new Error('The selected story-points field is not editable on this issue');
+    let field: JiraField | undefined;
+    let issue: unknown;
+    for (const candidate of candidates) {
+      const candidateIssue = await this.api(room, session, `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}?fields=${encodeURIComponent(candidate.id)}`);
+      if (record(candidateIssue) && record(candidateIssue.fields) && candidate.id in candidateIssue.fields) {
+        field = candidate;
+        issue = candidateIssue;
+        break;
+      }
+    }
+    if (!field) {
+      if (fieldId) throw new Error('The selected story-points field is not available on this issue');
+      throw new Error('No story-points field was found for this issue. Your estimate is kept.');
+    }
     this.linkedStory(room, session, ticketId);
     if ((ticket.revision ?? 0) !== revision || room.round !== round) throw new Error('The estimate changed. Review it and prepare again.');
     const preview: JiraPreview = {
