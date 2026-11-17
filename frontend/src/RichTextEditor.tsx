@@ -127,6 +127,7 @@ export function RichTextEditor({ id, label, document, issueUrl, disabled, invali
   const lastEmitted = useRef(JSON.stringify(document));
   const editor = useEditor({
     immediatelyRender: false,
+    shouldRerenderOnTransaction: true,
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3, 4, 5, 6] }, link: false, underline: false }),
       Underline,
