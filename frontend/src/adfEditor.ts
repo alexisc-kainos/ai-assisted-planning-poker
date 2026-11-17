@@ -51,7 +51,7 @@ function editorMarkToAdf(mark: NonNullable<EditorNode['marks']>[number]): NonNul
 function adfNodeToEditor(node: AdfNode): EditorNode {
   const editorType = ADF_TO_EDITOR_NODES[node.type];
   if (!editorType) {
-    const inline = ['mention', 'emoji', 'inlineCard'].includes(node.type);
+    const inline = ['mention', 'emoji', 'inlineCard', 'date', 'status', 'placeholder', 'inlineExtension', 'mediaInline'].includes(node.type);
     return {
       type: inline ? 'preservedAdfInline' : 'preservedAdfBlock',
       attrs: { payload: node },
