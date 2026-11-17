@@ -12,6 +12,7 @@ export const MAX_JIRA_TITLE_LENGTH = 255;
 export const MAX_JIRA_EDIT_TEXT_LENGTH = 50_000;
 export const MAX_JIRA_EXTRA_FIELDS = 10;
 export const MAX_JIRA_EDIT_MESSAGE_BYTES = MAX_JIRA_EDIT_TEXT_LENGTH * (MAX_JIRA_EXTRA_FIELDS + 1) * 6 + 16 * 1024;
+export const MAX_ADF_BYTES = 256 * 1024;
 const MAX_TICKET_ID_LENGTH = 64;
 
 const charLength = (value: string): number => Array.from(value).length;
@@ -94,6 +95,44 @@ export interface AdfDocument {
   content: AdfNode[];
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export function validateAdfDocument(value: unknown): AdfDocument {
+  if (value === null || value === undefined) return { type: 'doc', version: 1, content: [] };
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new Error('Jira description is invalid or exceeds the nesting safety limit; nothing was imported');
+  }
+  if (typeof serialized !== 'string' || Buffer.byteLength(serialized) > MAX_ADF_BYTES) {
+    throw new Error('Jira description exceeds the 256 KiB safety limit; nothing was imported');
+  }
+  let count = 0;
+  const node = (candidate: unknown, depth: number): candidate is AdfNode => {
+    if (++count > 20_000 || depth > 64 || !isRecord(candidate) || typeof candidate.type !== 'string') return false;
+    if (candidate.text !== undefined && typeof candidate.text !== 'string') return false;
+    if (candidate.attrs !== undefined && !isRecord(candidate.attrs)) return false;
+    if (candidate.marks !== undefined && (!Array.isArray(candidate.marks) || !candidate.marks.every((mark) =>
+      isRecord(mark) && typeof mark.type === 'string' && (mark.attrs === undefined || isRecord(mark.attrs))))) return false;
+    return candidate.content === undefined || (Array.isArray(candidate.content) &&
+      candidate.content.every((child) => node(child, depth + 1)));
+  };
+  if (!node(value, 0) || !isRecord(value) || value.type !== 'doc' || value.version !== 1 || !Array.isArray(value.content)) {
+    throw new Error('Jira description is invalid or exceeds the nesting safety limit; nothing was imported');
+  }
+  return value as unknown as AdfDocument;
+}
+
+function adfTextLength(node: AdfNode): number {
+  const ownText = node.type === 'text' ? node.text ?? ''
+    : node.type === 'mention' ? (typeof node.attrs?.text === 'string' ? node.attrs.text : 'Mention in Jira')
+      : node.type === 'emoji' ? (typeof node.attrs?.text === 'string' ? node.attrs.text
+        : typeof node.attrs?.shortName === 'string' ? node.attrs.shortName : '') : '';
+  return Array.from(ownText).length + (node.content ?? []).reduce((total, child) => total + adfTextLength(child), 0);
+}
+
 export interface JiraLink {
   cloudId: string;
   issueId: string;
@@ -111,7 +150,7 @@ export type JiraClientMessage =
   | { type: 'jira'; requestId: string; action: 'prepare'; ticketId: string; fieldId?: string }
   | { type: 'jira'; requestId: string; action: 'confirm'; confirmationId: string }
   | { type: 'jira'; requestId: string; action: 'details'; ticketId: string }
-  | { type: 'jira'; requestId: string; action: 'prepareEdit'; ticketId: string; title: string; description: string; extraFields?: Record<string, string> }
+  | { type: 'jira'; requestId: string; action: 'prepareEdit'; ticketId: string; title: string; description: AdfDocument; extraFields?: Record<string, string | AdfDocument> }
   | { type: 'jira'; requestId: string; action: 'confirmEdit'; confirmationId: string };
 
 export const isTicketType = (value: unknown): value is TicketType =>
@@ -215,20 +254,37 @@ export function parseClientMessage(raw: string): ParseResult {
       }
       if (action === 'prepareEdit' && isTicketId(message.ticketId)) {
         const title = parseJiraTitle(message.title);
-        const description = parseJiraText(message.description);
-        if (title === null || description === null) return invalid;
+        if (title === null || message.description === undefined || message.description === null) return invalid;
+        let description: AdfDocument;
+        try {
+          description = validateAdfDocument(message.description);
+        } catch {
+          return invalid;
+        }
+        if (adfTextLength(description) > MAX_JIRA_EDIT_TEXT_LENGTH) return invalid;
         if (message.extraFields === undefined) {
           return { ok: true, message: { ...base, action, ticketId: message.ticketId, title, description } };
         }
         if (typeof message.extraFields !== 'object' || message.extraFields === null || Array.isArray(message.extraFields)) return invalid;
         const entries = Object.entries(message.extraFields as Record<string, unknown>);
         if (entries.length > MAX_JIRA_EXTRA_FIELDS) return invalid;
-        const extraFields: Record<string, string> = {};
+        const extraFields: Record<string, string | AdfDocument> = {};
         for (const [id, value] of entries) {
           if (!/^[A-Za-z0-9_]{1,64}$/.test(id)) return invalid;
-          const parsed = parseJiraText(value);
-          if (parsed === null) return invalid;
-          extraFields[id] = parsed;
+          if (typeof value === 'string') {
+            const parsed = parseJiraText(value);
+            if (parsed === null) return invalid;
+            extraFields[id] = parsed;
+          } else {
+            if (value === null) return invalid;
+            try {
+              const parsed = validateAdfDocument(value);
+              if (adfTextLength(parsed) > MAX_JIRA_EDIT_TEXT_LENGTH) return invalid;
+              extraFields[id] = parsed;
+            } catch {
+              return invalid;
+            }
+          }
         }
         return { ok: true, message: { ...base, action, ticketId: message.ticketId, title, description, extraFields } };
       }

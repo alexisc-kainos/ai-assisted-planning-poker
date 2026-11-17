@@ -344,6 +344,93 @@
   margin-bottom: 0.75rem;
 }
 
+.jira-rich-text-editor {
+  display: grid;
+  min-width: 0;
+  border: 1.5px solid var(--field);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.jira-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem;
+  border-bottom: 1px solid var(--field);
+  background: var(--bg);
+}
+
+.jira-editor-toolbar button,
+.jira-editor-toolbar select {
+  min-height: 2rem;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--field);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+}
+
+.jira-editor-toolbar button[aria-pressed='true'] {
+  border-color: var(--teal);
+  background: color-mix(in srgb, var(--teal) 14%, white);
+}
+
+.jira-editor-toolbar input[type='url'] {
+  width: min(15rem, 100%);
+  min-height: 2rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 4px;
+}
+
+.jira-editor-content {
+  min-height: 10rem;
+  max-height: 32rem;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+.jira-editor-content .tiptap {
+  min-height: 8rem;
+  outline: none;
+}
+
+.jira-editor-content .tiptap > :first-child { margin-top: 0; }
+.jira-editor-content .tiptap > :last-child { margin-bottom: 0; }
+.jira-editor-content .tiptap h1 { font-size: 1.375rem; }
+.jira-editor-content .tiptap h2 { font-size: 1.05rem; }
+.jira-editor-content .tiptap h3 { font-size: 1rem; }
+.jira-editor-content .tiptap blockquote { margin: 0.5rem 0; padding: 0.5rem 0.75rem; border-left: 3px solid var(--teal); }
+.jira-editor-content .tiptap table { border-collapse: collapse; width: 100%; }
+.jira-editor-content .tiptap th,
+.jira-editor-content .tiptap td { min-width: 5rem; border: 1px solid var(--field); padding: 0.35rem 0.5rem; vertical-align: top; }
+.jira-editor-content .tiptap th { background: var(--bg); text-align: left; }
+
+.jira-preserved-adf {
+  display: block;
+  margin: 0.5rem 0;
+  padding: 0.35rem 0.5rem;
+  border: 1px dashed var(--field);
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.jira-preserved-adf.is-inline {
+  display: inline-flex;
+  margin: 0 0.15rem;
+  vertical-align: baseline;
+}
+
+.jira-editor-toolbar button:focus-visible,
+.jira-editor-toolbar select:focus-visible,
+.jira-editor-content [contenteditable='true']:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
 body {
   margin: 0;
   min-height: 100vh;

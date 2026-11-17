@@ -22,8 +22,9 @@ export interface JiraStatus {
   sites?: JiraSite[];
   reason?: string;
 }
-export interface JiraExtraField { id: string; name: string; adf: AdfDocument }
-export interface JiraEditChange { fieldId: string; fieldName: string; from: string; to: string }
+export interface JiraField { id: string; name: string }
+export interface JiraExtraField { id: string; name: string; adf: AdfDocument; kind?: 'string' | 'adf' }
+export interface JiraEditChange { fieldId: string; fieldName: string; from: string; to: string; fromAdf?: AdfDocument; toAdf?: AdfDocument }
 export interface JiraEditPreview {
   id: string;
   issueKey: string;
@@ -68,7 +69,7 @@ export type JiraClientMessage = { type: 'jira'; requestId: string } & (
   | { action: 'prepare'; ticketId: string; fieldId?: string }
   | { action: 'confirm'; confirmationId: string }
   | { action: 'details'; ticketId: string }
-  | { action: 'prepareEdit'; ticketId: string; title: string; description: string; extraFields?: Record<string, string> }
+  | { action: 'prepareEdit'; ticketId: string; title: string; description: AdfDocument; extraFields?: Record<string, string | AdfDocument> }
   | { action: 'confirmEdit'; confirmationId: string }
 );
 export type JiraRequest = JiraClientMessage extends infer Message

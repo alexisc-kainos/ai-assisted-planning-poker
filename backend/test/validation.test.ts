@@ -92,6 +92,47 @@ describe('parseConnectParams', () => {
 });
 
 describe('parseClientMessage', () => {
+  const adf = (text: string) => ({ type: 'doc', version: 1, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] });
+  const tooDeepAdf = () => {
+    let node: unknown = { type: 'text', text: 'Nested' };
+    for (let depth = 0; depth < 65; depth += 1) node = { type: 'paragraph', content: [node] };
+    return { type: 'doc', version: 1, content: [node] };
+  };
+  const adfWithNodes = (count: number) => ({ type: 'doc', version: 1, content: Array.from({ length: count }, () => ({ type: 'x' })) });
+
+  it('accepts ADF descriptions and both ADF and plain-string extra fields', () => {
+    const description = adf('Formatted description');
+    const criteria = adf('Formatted criteria');
+    expect(parseClientMessage(JSON.stringify({ type: 'jira', requestId: 'edit-1', action: 'prepareEdit', ticketId: 'ticket-1',
+      title: 'Updated title', description, extraFields: { customfield_1: criteria, customfield_2: 'Plain text' } }))).toEqual({
+      ok: true, message: { type: 'jira', requestId: 'edit-1', action: 'prepareEdit', ticketId: 'ticket-1',
+        title: 'Updated title', description, extraFields: { customfield_1: criteria, customfield_2: 'Plain text' } },
+    });
+  });
+
+  it.each([
+    ['missing description', undefined],
+    ['legacy string description', 'Plain text from a stale client'],
+    ['invalid document', { type: 'paragraph', version: 1, content: [] }],
+    ['too large', adf('x'.repeat(256 * 1024))],
+    ['too deep', tooDeepAdf()],
+  ])('rejects prepareEdit with %s ADF', (_label, description) => {
+    expect(parseClientMessage(JSON.stringify({ type: 'jira', requestId: 'edit-1', action: 'prepareEdit', ticketId: 'ticket-1',
+      title: 'Updated title', description }))).toMatchObject({ ok: false, error: 'Invalid Jira request' });
+  });
+
+  it('rejects ADF text exceeding the edit limit', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'jira', requestId: 'edit-1', action: 'prepareEdit', ticketId: 'ticket-1',
+      title: 'Updated title', description: adf('x'.repeat(50_001)) }))).toMatchObject({ ok: false, error: 'Invalid Jira request' });
+  });
+
+  it('accepts 20,000 ADF nodes and rejects 20,001', () => {
+    expect(parseClientMessage(JSON.stringify({ type: 'jira', requestId: 'edit-1', action: 'prepareEdit', ticketId: 'ticket-1',
+      title: 'Updated title', description: adfWithNodes(19_999) }))).toMatchObject({ ok: true });
+    expect(parseClientMessage(JSON.stringify({ type: 'jira', requestId: 'edit-1', action: 'prepareEdit', ticketId: 'ticket-1',
+      title: 'Updated title', description: adfWithNodes(20_000) }))).toMatchObject({ ok: false, error: 'Invalid Jira request' });
+  });
+
   it.each([
     ['not json', 'Malformed message'],
     ['null', 'Unknown message type'],

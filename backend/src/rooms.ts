@@ -24,7 +24,7 @@ export interface RoomTicket extends Ticket {
   result: TicketResult | null;
   jira?: JiraLink;
   descriptionAdf?: AdfDocument;
-  extraFields?: Array<{ id: string; name: string; adf: AdfDocument }>;
+  extraFields?: Array<{ id: string; name: string; adf: AdfDocument; kind?: 'string' | 'adf' }>;
   agreedEstimate?: number;
   revision?: number;
 }

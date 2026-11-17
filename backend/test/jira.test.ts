@@ -43,6 +43,9 @@ const jiraConfig = {
 const site = { id: 'cloud-one', name: 'Team Jira', url: 'https://team.atlassian.net' };
 const otherSite = { id: 'cloud-two', name: 'Other Jira', url: 'https://other.atlassian.net' };
 const scopes = ['read:jira-work', 'write:jira-work'];
+const adfOf = (text: string) => text
+  ? { type: 'doc' as const, version: 1 as const, content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
+  : { type: 'doc' as const, version: 1 as const, content: [] };
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json' },
 });
@@ -1008,8 +1011,7 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     expect(result.detail).toEqual({
       title: 'Imported story',
       descriptionAdf: context.state.issue.fields.description,
-      extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
-        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Given, When, Then' }] }] } }],
+      extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', kind: 'string', adf: adfOf('Given, When, Then') }],
     });
     expect(ticket.extraFields).toEqual(result.detail?.extraFields);
     expect(ticket.descriptionAdf).toEqual(result.detail?.descriptionAdf);
@@ -1028,14 +1030,18 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     context.state.extraFieldValues.customfield_20001 = adf;
     const ticket = await linkedTicket(context);
 
+    const updatedAdf = { type: 'doc' as const, version: 1 as const, content: [{ type: 'paragraph', content: [
+      { type: 'mention', attrs: { text: '@Alex' } }, { type: 'text', text: ' ' },
+      { type: 'emoji', attrs: { shortName: ':rocket:' } }, { type: 'text', text: ' updated' },
+    ] }] };
     const result = await context.act('prepareEdit', {
-      ticketId: ticket.id, title: ticket.title, description: '@Alex :rocket: updated',
-      extraFields: { customfield_20001: '@Alex :rocket: updated' },
+      ticketId: ticket.id, title: ticket.title, description: updatedAdf,
+      extraFields: { customfield_20001: updatedAdf },
     });
 
-    expect(result.editPreview?.changes).toEqual([
-      { fieldId: 'description', fieldName: 'Description', from: '@Alex :rocket:', to: '@Alex :rocket: updated' },
-      { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: '@Alex :rocket:', to: '@Alex :rocket: updated' },
+    expect(result.editPreview?.changes).toMatchObject([
+      { fieldId: 'description', fieldName: 'Description', from: '@Alex :rocket:', to: '@Alex :rocket: updated', fromAdf: adf, toAdf: updatedAdf },
+      { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: '@Alex :rocket:', to: '@Alex :rocket: updated', fromAdf: adf, toAdf: updatedAdf },
     ]);
   });
 
@@ -1045,11 +1051,10 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     context.state.extraFieldValues.customfield_20001 = 'Given, When, Then';
     const ticket = await linkedTicket(context);
     const result = await context.act('details', { ticketId: ticket.id });
-    expect(result.detail?.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Given, When, Then' }] }] } }]);
+    expect(result.detail?.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', kind: 'string', adf: adfOf('Given, When, Then') }]);
     expect(ticket.extraFields).toEqual(result.detail?.extraFields);
     await expect(context.act('prepareEdit', {
-      ticketId: ticket.id, title: ticket.title, description: '', extraFields: { customfield_20001: 'Changed' },
+      ticketId: ticket.id, title: ticket.title, description: adfOf(''), extraFields: { customfield_20001: 'Changed' },
     })).rejects.toThrow('One of the submitted fields is not editable on this issue');
   });
 
@@ -1069,8 +1074,7 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     context.state.missingFields.push('customfield_40001');
     const ticket = await linkedTicket(context);
     const result = await context.act('details', { ticketId: ticket.id });
-    expect(result.detail?.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Given, When, Then' }] }] } }]);
+    expect(result.detail?.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', kind: 'string', adf: adfOf('Given, When, Then') }]);
     expect(ticket.extraFields).toEqual(result.detail?.extraFields);
   });
 
@@ -1179,13 +1183,13 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     const ticket = await linkedTicket(context);
     const revisionBefore = ticket.revision ?? 0;
     const { editPreview } = await context.act('prepareEdit', {
-      ticketId: ticket.id, title: 'Updated title', description: 'Updated description', extraFields: { customfield_20001: 'Updated criteria' },
+      ticketId: ticket.id, title: 'Updated title', description: adfOf('Updated description'), extraFields: { customfield_20001: 'Updated criteria' },
     });
     expect(editPreview).toEqual({
       id: expect.any(String), issueKey: 'TEAM-7', issueUrl: `${site.url}/browse/TEAM-7`, siteName: site.name,
       changes: [
         { fieldId: 'summary', fieldName: 'Summary', from: 'Imported story', to: 'Updated title' },
-        { fieldId: 'description', fieldName: 'Description', from: '', to: 'Updated description' },
+        { fieldId: 'description', fieldName: 'Description', from: '', to: 'Updated description', fromAdf: adfOf(''), toAdf: adfOf('Updated description') },
         { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: 'Original criteria', to: 'Updated criteria' },
       ],
     });
@@ -1200,10 +1204,61 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
         customfield_20001: 'Updated criteria' },
     });
     expect(ticket.title).toBe('Updated title');
-    expect(ticket.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: { type: 'doc', version: 1,
-      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Updated criteria' }] }] } }]);
+    expect(ticket.extraFields).toEqual([{ id: 'customfield_20001', name: 'Acceptance Criteria', kind: 'string', adf: adfOf('Updated criteria') }]);
     expect(ticket.revision ?? 0).toBeGreaterThan(revisionBefore);
     await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('already used');
+  });
+
+  it('previews and writes description formatting changes even when the text is unchanged', async () => {
+    const context = fixture();
+    const original = { type: 'doc' as const, version: 1 as const, content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'Same text', marks: [{ type: 'strong' }] },
+    ] }] };
+    const updated = adfOf('Same text');
+    context.state.issue.fields.description = original;
+    const ticket = await linkedTicket(context);
+    const { editPreview } = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: updated,
+    });
+
+    expect(editPreview?.changes).toEqual([{ fieldId: 'description', fieldName: 'Description', from: 'Same text', to: 'Same text',
+      fromAdf: original, toAdf: updated }]);
+    expect(await context.act('confirmEdit', { confirmationId: editPreview!.id })).toEqual({ written: true });
+    expect(JSON.parse(String(context.writes()[0][1]?.body)).fields.description).toEqual(updated);
+  });
+
+  it('verifies a cleared ADF custom field while omitting it from populated fields', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.editable.customfield_20001 = { operations: ['set'] };
+    context.state.extraFieldValues.customfield_20001 = adfOf('Original criteria');
+    const ticket = await linkedTicket(context);
+    const emptyAdf = adfOf('');
+    const { editPreview } = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: adfOf(''), extraFields: { customfield_20001: emptyAdf },
+    });
+
+    expect(await context.act('confirmEdit', { confirmationId: editPreview!.id })).toEqual({ written: true });
+    expect(ticket.extraFields).toBeUndefined();
+    expect((await context.act('details', { ticketId: ticket.id })).detail?.extraFields).toBeUndefined();
+  });
+
+  it('rejects a concurrent formatting-only change after preview', async () => {
+    const context = fixture();
+    const original = { type: 'doc' as const, version: 1 as const, content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'Same text', marks: [{ type: 'strong' }] },
+    ] }] };
+    context.state.issue.fields.description = original;
+    const ticket = await linkedTicket(context);
+    const { editPreview } = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: adfOf('Same text'),
+    });
+    context.state.issue.fields.description = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'Same text', marks: [{ type: 'em' }] },
+    ] }] };
+
+    await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('Jira fields changed since the preview');
+    expect(context.writes()).toHaveLength(0);
   });
 
   it('writes back multiple discovered fields together in a single PUT', async () => {
@@ -1216,7 +1271,7 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     context.state.extraFieldValues.customfield_40001 = 'Original notes';
     const ticket = await linkedTicket(context);
     const { editPreview } = await context.act('prepareEdit', {
-      ticketId: ticket.id, title: ticket.title, description: '',
+      ticketId: ticket.id, title: ticket.title, description: adfOf(''),
       extraFields: { customfield_20001: 'Updated criteria', customfield_40001: 'Updated notes' },
     });
     expect(editPreview?.changes).toEqual(expect.arrayContaining([
@@ -1238,15 +1293,15 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     context.state.extraFieldValues.customfield_20001 = 'Original criteria';
     const ticket = await linkedTicket(context);
     const originalFields = structuredClone(ticket.extraFields);
-    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: '' });
+    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: adfOf('') });
     expect(await context.act('confirmEdit', { confirmationId: editPreview!.id })).toEqual({ written: true });
-    expect(ticket.extraFields).toEqual(originalFields);
+    expect(ticket.extraFields).toEqual(originalFields?.map((field) => ({ ...field, kind: field.kind ?? 'adf' })));
   });
 
   it('rejects a no-op edit without calling prepare metadata for nothing', async () => {
     const context = fixture();
     const ticket = await linkedTicket(context);
-    await expect(context.act('prepareEdit', { ticketId: ticket.id, title: ticket.title, description: '' })).rejects.toThrow('No changes to write back');
+    await expect(context.act('prepareEdit', { ticketId: ticket.id, title: ticket.title, description: adfOf('') })).rejects.toThrow('No changes to write back');
     expect(context.writes()).toHaveLength(0);
   });
 
@@ -1254,14 +1309,14 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     const context = fixture();
     const ticket = await linkedTicket(context);
     await expect(context.act('prepareEdit', {
-      ticketId: ticket.id, title: ticket.title, description: '', extraFields: { customfield_99999: 'New value' },
+      ticketId: ticket.id, title: ticket.title, description: adfOf(''), extraFields: { customfield_99999: 'New value' },
     })).rejects.toThrow('One of the submitted fields is not editable on this issue');
   });
 
   it('rejects a race where Jira fields changed since the preview and consumes the confirmation', async () => {
     const context = fixture();
     const ticket = await linkedTicket(context);
-    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: '' });
+    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: adfOf('') });
     context.state.issue.fields.summary = 'Changed upstream';
     await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('Jira fields changed since the preview');
     await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('already used');
@@ -1272,7 +1327,7 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     vi.useFakeTimers();
     const context = fixture();
     const ticket = await linkedTicket(context);
-    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: '' });
+    const { editPreview } = await context.act('prepareEdit', { ticketId: ticket.id, title: 'Updated title', description: adfOf('') });
     vi.advanceTimersByTime(120_000);
     await expect(context.act('confirmEdit', { confirmationId: editPreview!.id })).rejects.toThrow('Confirmation expired or was already used');
     expect(context.writes()).toHaveLength(0);

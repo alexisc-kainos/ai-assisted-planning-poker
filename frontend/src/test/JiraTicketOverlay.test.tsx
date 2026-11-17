@@ -117,7 +117,7 @@ describe('JiraTicketOverlay', () => {
     const { rerender } = render(<JiraTicketOverlay ticket={initial} {...props} />);
     await screen.findByText('Initial criteria');
     await user.click(screen.getByRole('button', { name: 'Edit' }));
-    expect(screen.getByLabelText('Description')).toHaveValue('@Alex :rocket:');
+    expect(await screen.findByRole('textbox', { name: 'Description' })).toHaveTextContent('@Alex :rocket:');
     await user.clear(screen.getByLabelText('Title'));
     await user.type(screen.getByLabelText('Title'), 'Unsaved draft');
 
@@ -171,7 +171,7 @@ describe('JiraTicketOverlay', () => {
   it('hides an unfilled Given/When/Then placeholder field in the view but keeps it editable', async () => {
     const request = vi.fn<(request: unknown) => Promise<JiraResult>>().mockResolvedValue({
       detail: { title: 'Login page', descriptionAdf: adfOf('Original description'),
-        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: adfOf('Given ...\nWhen ...\nThen ...') }] },
+        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', kind: 'string', adf: adfOf('Given ...\nWhen ...\nThen ...') }] },
     });
     render(<JiraTicketOverlay ticket={linkedTicket()} isHost jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
     await screen.findByText('Original description');
@@ -248,13 +248,14 @@ describe('JiraTicketOverlay', () => {
   it('edits title, description and discovered extra fields together, previews the diff and writes back once confirmed', async () => {
     const request = vi.fn<(request: unknown) => Promise<JiraResult>>()
       .mockResolvedValueOnce({ detail: { title: 'Login page', descriptionAdf: adfOf('Original description'),
-        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', adf: adfOf('Original criteria') }] } })
+        extraFields: [{ id: 'customfield_20001', name: 'Acceptance Criteria', kind: 'string', adf: adfOf('Original criteria') }] } })
       .mockResolvedValueOnce({
         editPreview: {
           id: 'confirmation-1', issueKey: 'TEAM-7', issueUrl: 'https://team.atlassian.net/browse/TEAM-7', siteName: 'Team Jira',
           changes: [
             { fieldId: 'summary', fieldName: 'Summary', from: 'Login page', to: 'Login with SSO' },
-            { fieldId: 'description', fieldName: 'Description', from: 'Original description', to: 'Updated description' },
+            { fieldId: 'description', fieldName: 'Description', from: 'Original description', to: 'Updated description',
+              fromAdf: adfOf('Original description'), toAdf: adfOf('Updated description') },
             { fieldId: 'customfield_20001', fieldName: 'Acceptance Criteria', from: 'Original criteria', to: 'Updated criteria' },
           ],
         },
@@ -268,7 +269,7 @@ describe('JiraTicketOverlay', () => {
     const title = screen.getByLabelText('Title');
     await user.clear(title);
     await user.type(title, 'Login with SSO');
-    const description = screen.getByLabelText('Description');
+    const description = screen.getByRole('textbox', { name: 'Description' });
     await user.clear(description);
     await user.type(description, 'Updated description');
     const acceptanceCriteria = screen.getByLabelText('Acceptance Criteria');
@@ -277,7 +278,7 @@ describe('JiraTicketOverlay', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(request).toHaveBeenLastCalledWith({
-      action: 'prepareEdit', ticketId: 't1', title: 'Login with SSO', description: 'Updated description',
+      action: 'prepareEdit', ticketId: 't1', title: 'Login with SSO', description: adfOf('Updated description'),
       extraFields: { customfield_20001: 'Updated criteria' },
     });
     const dialog = await screen.findByRole('dialog', { name: 'Confirm Jira changes' });
@@ -292,10 +293,35 @@ describe('JiraTicketOverlay', () => {
     expect(screen.getByRole('heading', { name: 'Login with SSO' })).toBeInTheDocument();
   });
 
+  it('renders before and after ADF formatting in the confirmation dialog when text is unchanged', async () => {
+    const before: AdfDocument = { type: 'doc', version: 1, content: [{ type: 'paragraph', content: [
+      { type: 'text', text: 'Same text', marks: [{ type: 'strong' }] },
+    ] }] };
+    const after = adfOf('Same text');
+    const request = vi.fn<(request: unknown) => Promise<JiraResult>>()
+      .mockResolvedValueOnce({ detail: { title: 'Login page', descriptionAdf: before } })
+      .mockResolvedValueOnce({ editPreview: { id: 'format-confirmation', issueKey: 'TEAM-7',
+        issueUrl: 'https://team.atlassian.net/browse/TEAM-7', siteName: 'Team Jira', changes: [
+          { fieldId: 'description', fieldName: 'Description', from: 'Same text', to: 'Same text', fromAdf: before, toAdf: after },
+        ] } });
+    const user = userEvent.setup();
+    render(<JiraTicketOverlay ticket={linkedTicket({ descriptionAdf: before })} isHost jiraStatus={connectedStatus}
+      request={request} onClose={vi.fn()} />);
+    await screen.findByText('Same text');
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm Jira changes' });
+    const previews = dialog.querySelectorAll('.jira-description');
+    expect(previews).toHaveLength(2);
+    expect(previews[0].querySelector('strong')).toHaveTextContent('Same text');
+    expect(previews[1].querySelector('strong')).toBeNull();
+  });
+
   it('does not submit unchanged custom fields when editing the title', async () => {
     const request = vi.fn<(request: unknown) => Promise<JiraResult>>()
       .mockResolvedValueOnce({ detail: { title: 'Login page', descriptionAdf: adfOf('Original description'),
-        extraFields: [{ id: 'customfield_1', name: 'Description (Project_Name)', adf: adfOf('Project details') }] } })
+        extraFields: [{ id: 'customfield_1', name: 'Description (Project_Name)', kind: 'string', adf: adfOf('Project details') }] } })
       .mockResolvedValueOnce({});
     const user = userEvent.setup();
     render(<JiraTicketOverlay ticket={linkedTicket()} isHost jiraStatus={connectedStatus} request={request} onClose={vi.fn()} />);
@@ -305,7 +331,7 @@ describe('JiraTicketOverlay', () => {
     await user.type(screen.getByLabelText('Title'), 'Updated title');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(request).toHaveBeenLastCalledWith({
-      action: 'prepareEdit', ticketId: 't1', title: 'Updated title', description: 'Original description',
+      action: 'prepareEdit', ticketId: 't1', title: 'Updated title', description: adfOf('Original description'),
     });
   });
 

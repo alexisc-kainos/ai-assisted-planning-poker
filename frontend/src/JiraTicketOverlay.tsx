@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { hasRenderableJiraContent, isRelevantJiraField, JiraDescription, JiraIssueLink } from './JiraDescription';
 import { JiraTicketHeader } from './JiraTicketHeader';
 import { jiraEditTextError, jiraTitleError } from './validation';
@@ -6,6 +6,8 @@ import type { AdfDocument, AdfNode, JiraEditPreview, JiraExtraField, JiraRequest
 
 type Request = (request: JiraRequest) => Promise<JiraResult>;
 type Feedback = { error: boolean; message: string };
+
+const RichTextEditor = lazy(() => import('./RichTextEditor').then(({ RichTextEditor: Editor }) => ({ default: Editor })));
 
 // Coalesces duplicate concurrent 'details' fetches for the same ticket (e.g. React StrictMode's
 // double-invoked effects in development) so they share one request instead of racing the
@@ -53,6 +55,23 @@ function plainTextToAdf(text: string): AdfDocument {
   ]) })) };
 }
 
+const emptyAdf: AdfDocument = { type: 'doc', version: 1, content: [] };
+
+function adfDeepEqual(first: unknown, second: unknown): boolean {
+  if (Object.is(first, second)) return true;
+  if (Array.isArray(first) || Array.isArray(second)) {
+    return Array.isArray(first) && Array.isArray(second) && first.length === second.length &&
+      first.every((value, index) => adfDeepEqual(value, second[index]));
+  }
+  if (typeof first !== 'object' || first === null || typeof second !== 'object' || second === null) return false;
+  const firstRecord = first as Record<string, unknown>;
+  const secondRecord = second as Record<string, unknown>;
+  const firstKeys = Object.keys(firstRecord).sort();
+  const secondKeys = Object.keys(secondRecord).sort();
+  return firstKeys.length === secondKeys.length && firstKeys.every((key, index) =>
+    key === secondKeys[index] && adfDeepEqual(firstRecord[key], secondRecord[key]));
+}
+
 const GWT_KEYWORD = /\b(given|when|then|and|but)\b/i;
 const GWT_KEYWORDS_GLOBAL = /\b(given|when|then|and|but)\b/gi;
 const PLACEHOLDER_FILLER = /[.\-_*…:;<>[\](),]/g;
@@ -78,12 +97,13 @@ function isGwtPlaceholder(doc: AdfDocument): boolean {
   return meaningful.length === 0;
 }
 
-function EditConfirmDialog({ preview, busy, onConfirm, onCancel, returnFocus }: {
+function EditConfirmDialog({ preview, busy, onConfirm, onCancel, returnFocus, issueUrl }: {
   preview: JiraEditPreview;
   busy: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   returnFocus: { current: HTMLButtonElement | null };
+  issueUrl: string;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -109,8 +129,8 @@ function EditConfirmDialog({ preview, busy, onConfirm, onCancel, returnFocus }: 
           {preview.changes.map((change) => (
             <div key={change.fieldId} className="jira-edit-change">
               <dt>{change.fieldName}</dt>
-              <dd>From: {change.from || '(empty)'}</dd>
-              <dd>To: {change.to || '(empty)'}</dd>
+              <dd>From: {change.fromAdf ? <JiraDescription document={change.fromAdf} issueUrl={issueUrl} /> : change.from || '(empty)'}</dd>
+              <dd>To: {change.toAdf ? <JiraDescription document={change.toAdf} issueUrl={issueUrl} /> : change.to || '(empty)'}</dd>
             </div>
           ))}
         </dl>
@@ -141,8 +161,8 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
   const [loadError, setLoadError] = useState('');
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(title);
-  const [draftDescription, setDraftDescription] = useState(descriptionAdf ? adfToPlainText(descriptionAdf) : '');
-  const [draftExtraFields, setDraftExtraFields] = useState<Record<string, string>>({});
+  const [draftDescription, setDraftDescription] = useState<AdfDocument>(descriptionAdf ?? emptyAdf);
+  const [draftExtraFields, setDraftExtraFields] = useState<Record<string, string | AdfDocument>>({});
   const [preview, setPreview] = useState<JiraEditPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -182,8 +202,9 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
 
   const startEditing = () => {
     setDraftTitle(title);
-    setDraftDescription(descriptionAdf ? adfToPlainText(descriptionAdf) : '');
-    setDraftExtraFields(Object.fromEntries(extraFields.map((field) => [field.id, adfToPlainText(field.adf)])));
+    setDraftDescription(descriptionAdf ?? emptyAdf);
+    setDraftExtraFields(Object.fromEntries(extraFields.map((field) => [field.id,
+      field.kind === 'string' ? adfToPlainText(field.adf) : field.adf])));
     setFeedback(null);
     setEditing(true);
   };
@@ -194,8 +215,12 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
   };
 
   const titleError = jiraTitleError(draftTitle);
-  const descriptionError = jiraEditTextError(draftDescription);
-  const extraFieldErrors = extraFields.map((field) => jiraEditTextError(draftExtraFields[field.id] ?? ''));
+  const descriptionText = adfToPlainText(draftDescription);
+  const descriptionError = jiraEditTextError(descriptionText);
+  const extraFieldErrors = extraFields.map((field) => {
+    const value = draftExtraFields[field.id] ?? (field.kind === 'string' ? '' : emptyAdf);
+    return jiraEditTextError(typeof value === 'string' ? value : adfToPlainText(value));
+  });
   const hasFieldErrors = extraFieldErrors.some(Boolean);
 
   const save = async () => {
@@ -203,14 +228,19 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
     setBusy(true);
     setFeedback(null);
     try {
-      const changedFields = extraFields.filter((field) => (draftExtraFields[field.id] ?? '').trim() !== adfToPlainText(field.adf).trim());
+      const changedFields = extraFields.filter((field) => {
+        const value = draftExtraFields[field.id] ?? (field.kind === 'string' ? '' : field.adf);
+        return field.kind === 'string'
+          ? typeof value !== 'string' || value.trim() !== adfToPlainText(field.adf).trim()
+          : typeof value === 'string' || !adfDeepEqual(value, field.adf);
+      });
       // Match the backend's MAX_JIRA_EXTRA_FIELDS limit.
       if (changedFields.length > 10) {
         throw new Error('You can save up to 10 custom fields at once. Revert some field changes before saving, then edit those fields separately.');
       }
       const result = await request({
-        action: 'prepareEdit', ticketId: ticket.id, title: draftTitle.trim(), description: draftDescription.trim(),
-        ...(changedFields.length ? { extraFields: Object.fromEntries(changedFields.map((field) => [field.id, (draftExtraFields[field.id] ?? '').trim()])) } : {}),
+        action: 'prepareEdit', ticketId: ticket.id, title: draftTitle.trim(), description: draftDescription,
+        ...(changedFields.length ? { extraFields: Object.fromEntries(changedFields.map((field) => [field.id, draftExtraFields[field.id]])) } : {}),
       });
       if (!live.current) return;
       if (result.editPreview) setPreview(result.editPreview);
@@ -232,11 +262,17 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
       } else if (result.written === true) {
         setTitle(draftTitle);
         if (preview.changes.some((change) => change.fieldId === 'description')) {
-          setDescriptionAdf(plainTextToAdf(draftDescription));
+          setDescriptionAdf(draftDescription);
         }
-        setExtraFields(extraFields.filter((field) => (draftExtraFields[field.id] ?? '').trim()).map((field) =>
-          (draftExtraFields[field.id] ?? '').trim() === adfToPlainText(field.adf).trim()
-            ? field : { ...field, adf: plainTextToAdf(draftExtraFields[field.id] ?? '') }));
+        setExtraFields(extraFields.map((field) => {
+          const value = draftExtraFields[field.id];
+          if (value === undefined) return field;
+          if (field.kind === 'string' && typeof value === 'string') {
+            return { ...field, adf: plainTextToAdf(value), kind: 'string' as const };
+          }
+          if (field.kind !== 'string' && typeof value !== 'string') return { ...field, adf: value, kind: 'adf' as const };
+          return field;
+        }));
         setFeedback({ error: false, message: 'Jira updated successfully.' });
         setEditing(false);
       } else {
@@ -257,7 +293,7 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
         onKeyDown={(event) => {
           if (event.key === 'Escape' && !preview) { event.preventDefault(); onClose(); }
           if (event.key !== 'Tab' || preview) return;
-          const controls = dialog.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"]):not(:disabled)');
+          const controls = dialog.current?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled),textarea:not(:disabled),[contenteditable="true"],[tabindex]:not([tabindex="-1"]):not(:disabled)');
           if (!controls?.length) return;
           const first = controls[0];
           const last = controls[controls.length - 1];
@@ -310,16 +346,28 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
               </div>
               <div className="field">
                 <label htmlFor="jira-edit-description">Description</label>
-                <textarea id="jira-edit-description" rows={6} value={draftDescription} disabled={busy}
-                  onChange={(event) => setDraftDescription(event.target.value)} />
-                {descriptionError && <p className="field-error" role="alert">{descriptionError}</p>}
+                <Suspense fallback={<p role="status">Loading rich-text editor...</p>}>
+                  <RichTextEditor id="jira-edit-description" label="Description" document={draftDescription} issueUrl={ticket.jira?.url ?? ''}
+                    disabled={busy} invalid={!!descriptionError} describedBy={descriptionError ? 'jira-edit-description-error' : undefined}
+                    onChange={setDraftDescription} />
+                </Suspense>
+                {descriptionError && <p id="jira-edit-description-error" className="field-error" role="alert">{descriptionError}</p>}
               </div>
               {extraFields.map((field, index) => (
                 <div className="field" key={field.id}>
                   <label htmlFor={`jira-edit-extra-${field.id}`}>{field.name}</label>
-                  <textarea id={`jira-edit-extra-${field.id}`} rows={6} value={draftExtraFields[field.id] ?? ''} disabled={busy}
-                    onChange={(event) => setDraftExtraFields((current) => ({ ...current, [field.id]: event.target.value }))} />
-                  {extraFieldErrors[index] && <p className="field-error" role="alert">{extraFieldErrors[index]}</p>}
+                  {field.kind === 'string' ? (
+                    <textarea id={`jira-edit-extra-${field.id}`} rows={6} value={typeof draftExtraFields[field.id] === 'string' ? draftExtraFields[field.id] as string : ''} disabled={busy}
+                      onChange={(event) => setDraftExtraFields((current) => ({ ...current, [field.id]: event.target.value }))} />
+                  ) : (
+                    <Suspense fallback={<p role="status">Loading rich-text editor...</p>}>
+                      <RichTextEditor id={`jira-edit-extra-${field.id}`} label={field.name} document={typeof draftExtraFields[field.id] === 'string' || !draftExtraFields[field.id]
+                        ? field.adf : draftExtraFields[field.id] as AdfDocument} issueUrl={ticket.jira?.url ?? ''} disabled={busy}
+                        invalid={!!extraFieldErrors[index]} describedBy={extraFieldErrors[index] ? `jira-edit-extra-${field.id}-error` : undefined}
+                        onChange={(value) => setDraftExtraFields((current) => ({ ...current, [field.id]: value }))} />
+                    </Suspense>
+                  )}
+                  {extraFieldErrors[index] && <p id={`jira-edit-extra-${field.id}-error`} className="field-error" role="alert">{extraFieldErrors[index]}</p>}
                 </div>
               ))}
             </div>
@@ -330,7 +378,7 @@ export function JiraTicketOverlay({ ticket, isHost, jiraStatus, request, onClose
             </div>
           </form>
         )}
-        {preview && <EditConfirmDialog preview={preview} busy={busy} returnFocus={saveButton}
+        {preview && <EditConfirmDialog preview={preview} busy={busy} returnFocus={saveButton} issueUrl={ticket.jira?.url ?? ''}
           onCancel={() => setPreview(null)} onConfirm={() => void confirm()} />}
       </div>
     </div>
