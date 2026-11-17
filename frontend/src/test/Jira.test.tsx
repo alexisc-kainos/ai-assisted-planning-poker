@@ -422,7 +422,7 @@ describe('Jira room workflow', () => {
     expect(ws.requests('confirm')).toHaveLength(0);
   });
 
-  it('uses one Update Jira button to agree points and prepare confirmation, including ambiguous field selection', async () => {
+  it('uses one Update Jira button to agree points and prepare confirmation', async () => {
     const { ws } = await ready();
     const points = screen.getByLabelText('Story points');
     expect(within(points).getAllByRole('option').map((option) => option.textContent)).toEqual(['Choose points', '1', '2', '3', '5', '8', '13', '20']);
@@ -436,11 +436,8 @@ describe('Jira room workflow', () => {
     expect(ws.requests('prepare').at(-1)).toMatchObject({ action: 'prepare', ticketId: linked.id });
     expect(screen.getByRole('button', { name: 'Update Jira' })).toBeDisabled();
     ws.emit({ ...agreedState(), tickets: [{ ...linked, agreedEstimate: 8, revision: 2 }] });
-    await reply(ws, 'prepare', { fields: [{ id: preview.fieldId, name: preview.fieldName }, { id: 'other', name: 'Alternative' }] });
-    expect(screen.getByRole('button', { name: 'Update Jira' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Jira estimate field'), { target: { value: preview.fieldId } });
-    const dialog = await openPreview(ws);
-    expect(ws.requests('prepare').at(-1)).toMatchObject({ action: 'prepare', ticketId: linked.id, fieldId: preview.fieldId });
+    await reply(ws, 'prepare', { preview });
+    const dialog = screen.getByRole('dialog', { name: 'Confirm Jira estimate' });
     for (const text of [site.name, 'PPK-1', 'Story points (customfield_10)', '3', '8']) expect(within(dialog).getByText(text)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));

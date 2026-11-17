@@ -51,7 +51,6 @@ export interface JiraResult {
   status?: JiraStatus;
   authorizeUrl?: string;
   ticketId?: string;
-  fields?: JiraField[];
   suggestions?: Array<{ key: string; summary: string }>;
   preview?: JiraPreview;
   written?: boolean;
