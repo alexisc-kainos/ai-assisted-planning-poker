@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { JiraConfig } from './config.js';
 import type { Room, RoomTicket } from './rooms.js';
-import { isTicketType, STORY_POINT_VALUES, type AdfDocument, type AdfNode, type JiraClientMessage } from './validation.js';
+import { isTicketType, STORY_POINT_VALUES, validateAdfDocument, type AdfDocument, type AdfNode, type JiraClientMessage } from './validation.js';
 
 export interface JiraSite { id: string; name: string; url: string }
 export interface JiraStatus {
@@ -24,7 +24,7 @@ export interface JiraPreview {
   currentPoints: number | null;
   points: number;
 }
-export interface JiraEditChange { fieldId: string; fieldName: string; from: string; to: string }
+export interface JiraEditChange { fieldId: string; fieldName: string; from: string; to: string; fromAdf?: AdfDocument; toAdf?: AdfDocument }
 export interface JiraEditPreview {
   id: string;
   issueKey: string;
@@ -32,7 +32,7 @@ export interface JiraEditPreview {
   siteName: string;
   changes: JiraEditChange[];
 }
-export interface JiraExtraField { id: string; name: string; adf: AdfDocument }
+export interface JiraExtraField { id: string; name: string; adf: AdfDocument; kind: 'string' | 'adf' }
 export interface JiraTicketDetail {
   title: string;
   descriptionAdf: AdfDocument;
@@ -63,7 +63,7 @@ interface EditConfirmation {
   ticket: RoomTicket;
   revision: number;
   expiresAt: number;
-  values: { title: string; description: string; extraFields: Record<string, string> };
+  values: { title: string; description: AdfDocument; extraFields: Record<string, string | AdfDocument> };
   fields: EditField[];
 }
 interface Session {
@@ -90,7 +90,6 @@ interface PendingOAuth {
 const randomId = () => randomBytes(24).toString('base64url');
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-const MAX_ADF_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const OAUTH_LIFETIME = 10 * 60 * 1_000;
 
@@ -109,23 +108,19 @@ export function parseJiraIssueKey(input: string, siteOrigin: string): string {
   throw new Error('Provide an issue key or Jira issue URL from the connected site');
 }
 
-export function validateJiraDescription(value: unknown): AdfDocument {
-  if (value === null || value === undefined) return { type: 'doc', version: 1, content: [] };
-  if (Buffer.byteLength(JSON.stringify(value)) > MAX_ADF_BYTES) throw new Error('Jira description exceeds the 256 KiB safety limit; nothing was imported');
-  let count = 0;
-  const node = (candidate: unknown, depth: number): candidate is AdfNode => {
-    if (++count > 20_000 || depth > 64 || !record(candidate) || typeof candidate.type !== 'string') return false;
-    if (candidate.text !== undefined && typeof candidate.text !== 'string') return false;
-    if (candidate.attrs !== undefined && !record(candidate.attrs)) return false;
-    if (candidate.marks !== undefined && (!Array.isArray(candidate.marks) || !candidate.marks.every((mark) =>
-      record(mark) && typeof mark.type === 'string' && (mark.attrs === undefined || record(mark.attrs))))) return false;
-    return candidate.content === undefined || (Array.isArray(candidate.content) &&
-      candidate.content.every((child) => node(child, depth + 1)));
-  };
-  if (!node(value, 0) || !record(value) || value.type !== 'doc' || value.version !== 1 || !Array.isArray(value.content)) {
-    throw new Error('Jira description is invalid or exceeds the nesting safety limit; nothing was imported');
+export const validateJiraDescription = validateAdfDocument;
+
+function adfDeepEqual(first: unknown, second: unknown): boolean {
+  if (Object.is(first, second)) return true;
+  if (Array.isArray(first) || Array.isArray(second)) {
+    return Array.isArray(first) && Array.isArray(second) && first.length === second.length &&
+      first.every((value, index) => adfDeepEqual(value, second[index]));
   }
-  return value as unknown as AdfDocument;
+  if (!record(first) || !record(second)) return false;
+  const firstKeys = Object.keys(first).sort();
+  const secondKeys = Object.keys(second).sort();
+  return firstKeys.length === secondKeys.length && firstKeys.every((key, index) =>
+    key === secondKeys[index] && adfDeepEqual(first[key], second[key]));
 }
 
 function numericValue(issue: unknown, fieldId: string): number | null {
@@ -443,7 +438,7 @@ export class JiraService {
     const candidates = await this.discoverExtraFields(room, session);
     const snapshot = await this.readIssue(room, session, issue.id, candidates);
     const extraFields = snapshot.extras.filter((extra) => extra.adf !== undefined)
-      .map(({ id, name, adf }) => ({ id, name, adf: adf! }));
+      .map(({ id, name, adf, kind }) => ({ id, name, adf: adf!, kind }));
     this.valid(room, session);
     const ticket = room.importTicket(userId, {
       type: typeName,
@@ -535,7 +530,7 @@ export class JiraService {
     const candidates = await this.discoverExtraFields(room, session);
     const snapshot = await this.readIssue(room, session, ticket.jira!.issueId, candidates);
     const present = snapshot.extras.filter((extra) => extra.adf !== undefined);
-    const extraFields: JiraExtraField[] = present.map(({ id, name, adf }) => ({ id, name, adf: adf! }));
+    const extraFields: JiraExtraField[] = present.map(({ id, name, adf, kind }) => ({ id, name, adf: adf!, kind }));
     room.applyJiraFieldUpdate(ticket.id, {
       title: snapshot.title, descriptionAdf: snapshot.descriptionAdf, extraFields: extraFields.length ? extraFields : undefined,
     });
@@ -543,7 +538,7 @@ export class JiraService {
       ...(extraFields.length ? { extraFields } : {}) } };
   }
 
-  private async prepareEdit(room: Room, session: Session, ticketId: string, title: string, description: string, extraFields?: Record<string, string>): Promise<JiraResult> {
+  private async prepareEdit(room: Room, session: Session, ticketId: string, title: string, description: AdfDocument, extraFields?: Record<string, string | AdfDocument>): Promise<JiraResult> {
     const ticket = this.jiraTicket(room, session, ticketId);
     const revision = ticket.revision ?? 0;
     delete session.editConfirmation;
@@ -560,12 +555,19 @@ export class JiraService {
     if ((ticket.revision ?? 0) !== revision) throw new Error('The ticket changed. Review it and prepare again.');
     const changes: JiraEditChange[] = [];
     if (title !== current.title) changes.push({ fieldId: 'summary', fieldName: 'Summary', from: current.title, to: title });
-    if (description !== current.description) changes.push({ fieldId: 'description', fieldName: 'Description', from: current.description, to: description });
+    if (!adfDeepEqual(description, current.descriptionAdf)) changes.push({ fieldId: 'description', fieldName: 'Description',
+      from: current.description, to: adfToPlainText(description), fromAdf: current.descriptionAdf, toAdf: description });
     const fields: EditField[] = [];
     for (const extra of current.extras) {
       fields.push({ id: extra.id, name: extra.name, kind: extra.kind });
       const value = extraFields?.[extra.id];
-      if (value !== undefined && value !== extra.text) changes.push({ fieldId: extra.id, fieldName: extra.name, from: extra.text, to: value });
+      if (value !== undefined) {
+        const valueText = typeof value === 'string' ? value : adfToPlainText(value);
+        const valueAdf = typeof value === 'string' ? plainTextToAdf(value) : value;
+        const changed = extra.kind === 'adf' ? !adfDeepEqual(valueAdf, extra.adf) : valueText !== extra.text;
+        if (changed) changes.push({ fieldId: extra.id, fieldName: extra.name, from: extra.text, to: valueText,
+          ...(extra.kind === 'adf' && extra.adf ? { fromAdf: extra.adf, toAdf: valueAdf } : {}) });
+      }
     }
     if (!changes.length) throw new Error('No changes to write back');
     const preview: JiraEditPreview = { id: randomId(), issueKey: ticket.jira!.key, issueUrl: ticket.jira!.url, siteName: session.site!.name, changes };
@@ -590,15 +592,24 @@ export class JiraService {
     check();
     const latest: Record<string, string> = { summary: current.title, description: current.description };
     for (const extra of current.extras) latest[extra.id] = extra.text;
-    if (preview.changes.some((change) => latest[change.fieldId] !== change.from)) throw new Error('Jira fields changed since the preview. Prepare and confirm the new values.');
+    if (preview.changes.some((change) => {
+      if (change.fieldId === 'description' && change.fromAdf) return !adfDeepEqual(current.descriptionAdf, change.fromAdf);
+      const field = fields.find((candidate) => candidate.id === change.fieldId);
+      if (field?.kind === 'adf' && change.fromAdf) {
+        return !adfDeepEqual(current.extras.find((extra) => extra.id === change.fieldId)?.adf, change.fromAdf);
+      }
+      return latest[change.fieldId] !== change.from;
+    })) throw new Error('Jira fields changed since the preview. Prepare and confirm the new values.');
     const body: Record<string, unknown> = {};
     for (const change of preview.changes) {
       if (change.fieldId === 'summary') body.summary = values.title;
-      else if (change.fieldId === 'description') body.description = plainTextToAdf(values.description);
+      else if (change.fieldId === 'description') body.description = values.description;
       else {
         const field = fields.find((candidate) => candidate.id === change.fieldId);
         const value = values.extraFields[change.fieldId] ?? '';
-        body[change.fieldId] = field?.kind === 'adf' ? plainTextToAdf(value) : value;
+        body[change.fieldId] = field?.kind === 'adf'
+          ? typeof value === 'string' ? plainTextToAdf(value) : value
+          : typeof value === 'string' ? value : adfToPlainText(value);
       }
     }
     const issuePath = `/rest/api/3/issue/${encodeURIComponent(ticket.jira!.issueId)}`;
@@ -610,8 +621,9 @@ export class JiraService {
       check();
       const present = verified.extras.filter((extra) => extra.adf !== undefined);
       const verifiedExtraFields: JiraExtraField[] = [
-        ...(ticket.extraFields ?? []).filter((field) => !fields.some((edited) => edited.id === field.id)),
-        ...present.map(({ id, name, adf }) => ({ id, name, adf: adf! })),
+        ...(ticket.extraFields ?? []).filter((field) => !fields.some((edited) => edited.id === field.id))
+          .map((field) => ({ ...field, kind: field.kind ?? 'adf' })),
+        ...present.map(({ id, name, adf, kind }) => ({ id, name, adf: adf!, kind })),
       ];
       room.applyJiraFieldUpdate(ticket.id, {
         title: verified.title, descriptionAdf: verified.descriptionAdf,
@@ -622,8 +634,9 @@ export class JiraService {
       const matches = preview.changes.every((change) => {
         const expected = body[change.fieldId];
         if (typeof expected === 'string') return verifiedValues[change.fieldId] === expected;
-        const text = adfToPlainText(expected as AdfDocument);
-        return verifiedValues[change.fieldId] === (change.fieldId === 'description' ? text : text.trim());
+        const verifiedAdf = change.fieldId === 'description' ? verified.descriptionAdf
+          : verified.extras.find((extra) => extra.id === change.fieldId)?.adf;
+        return adfDeepEqual(verifiedAdf, expected);
       });
       return matches ? { written: true } : { written: false, uncertain: true };
     } catch (error) {

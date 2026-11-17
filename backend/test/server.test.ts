@@ -82,7 +82,8 @@ describe('create and join handshake', () => {
     await alice.next('state');
 
     alice.send({ type: 'jira', requestId: 'large-edit', action: 'prepareEdit', ticketId: 'ticket-1',
-      title: 'Long description', description: 'x'.repeat(20_000) });
+      title: 'Long description', description: { type: 'doc', version: 1,
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x'.repeat(20_000) }] }] } });
 
     expect(await alice.next('jira')).toMatchObject({ type: 'jira', requestId: 'large-edit', ok: false });
     expect(alice.ws.readyState).toBe(1);
