@@ -562,6 +562,9 @@ export class JiraService {
       fields.push({ id: extra.id, name: extra.name, kind: extra.kind });
       const value = extraFields?.[extra.id];
       if (value !== undefined) {
+        if ((extra.kind === 'string') !== (typeof value === 'string')) {
+          throw new Error('Submitted value does not match the Jira field format. Reload Jira details and try again.');
+        }
         const valueText = typeof value === 'string' ? value : adfToPlainText(value);
         const valueAdf = typeof value === 'string' ? plainTextToAdf(value) : value;
         const changed = extra.kind === 'adf' ? !adfDeepEqual(valueAdf, extra.adf) : valueText !== extra.text;
