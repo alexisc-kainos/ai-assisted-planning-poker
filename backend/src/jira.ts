@@ -181,7 +181,7 @@ function textFieldValue(issue: unknown, fieldId: string): TextFieldValue | null 
   if (!record(value) || value.type !== 'doc') return null;
   const adf = validateJiraDescription(value);
   const text = adfToPlainText(adf).trim();
-  return text ? { text, adf, kind: 'adf' } : null;
+  return { text, adf, kind: 'adf' };
 }
 
 function htmlText(value: string): string {
@@ -437,7 +437,7 @@ export class JiraService {
     validateJiraDescription(fields.description);
     const candidates = await this.discoverExtraFields(room, session);
     const snapshot = await this.readIssue(room, session, issue.id, candidates);
-    const extraFields = snapshot.extras.filter((extra) => extra.adf !== undefined)
+    const extraFields = snapshot.extras.filter((extra) => extra.text && extra.adf !== undefined)
       .map(({ id, name, adf, kind }) => ({ id, name, adf: adf!, kind }));
     this.valid(room, session);
     const ticket = room.importTicket(userId, {
@@ -529,7 +529,7 @@ export class JiraService {
     const ticket = this.jiraTicket(room, session, ticketId);
     const candidates = await this.discoverExtraFields(room, session);
     const snapshot = await this.readIssue(room, session, ticket.jira!.issueId, candidates);
-    const present = snapshot.extras.filter((extra) => extra.adf !== undefined);
+    const present = snapshot.extras.filter((extra) => extra.text && extra.adf !== undefined);
     const extraFields: JiraExtraField[] = present.map(({ id, name, adf, kind }) => ({ id, name, adf: adf!, kind }));
     room.applyJiraFieldUpdate(ticket.id, {
       title: snapshot.title, descriptionAdf: snapshot.descriptionAdf, extraFields: extraFields.length ? extraFields : undefined,
@@ -622,7 +622,7 @@ export class JiraService {
       putSucceeded = true;
       const verified = await this.readIssue(room, session, ticket.jira!.issueId, fields);
       check();
-      const present = verified.extras.filter((extra) => extra.adf !== undefined);
+      const present = verified.extras.filter((extra) => extra.text && extra.adf !== undefined);
       const verifiedExtraFields: JiraExtraField[] = [
         ...(ticket.extraFields ?? []).filter((field) => !fields.some((edited) => edited.id === field.id))
           .map((field) => ({ ...field, kind: field.kind ?? 'adf' })),

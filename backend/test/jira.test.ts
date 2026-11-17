@@ -1205,6 +1205,22 @@ describe('ticket overlay: live details and dynamic multi-field write-back', () =
     expect(JSON.parse(String(context.writes()[0][1]?.body)).fields.description).toEqual(updated);
   });
 
+  it('verifies a cleared ADF custom field while omitting it from populated fields', async () => {
+    const context = fixture();
+    context.state.fields.push(acField);
+    context.state.editable.customfield_20001 = { operations: ['set'] };
+    context.state.extraFieldValues.customfield_20001 = adfOf('Original criteria');
+    const ticket = await linkedTicket(context);
+    const emptyAdf = adfOf('');
+    const { editPreview } = await context.act('prepareEdit', {
+      ticketId: ticket.id, title: ticket.title, description: adfOf(''), extraFields: { customfield_20001: emptyAdf },
+    });
+
+    expect(await context.act('confirmEdit', { confirmationId: editPreview!.id })).toEqual({ written: true });
+    expect(ticket.extraFields).toBeUndefined();
+    expect((await context.act('details', { ticketId: ticket.id })).detail?.extraFields).toBeUndefined();
+  });
+
   it('rejects a concurrent formatting-only change after preview', async () => {
     const context = fixture();
     const original = { type: 'doc' as const, version: 1 as const, content: [{ type: 'paragraph', content: [
