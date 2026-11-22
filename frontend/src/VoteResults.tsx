@@ -1,9 +1,10 @@
 import { useId } from 'react';
-import { deckFor, voteLabel } from './config';
+import { Avatar } from './avatars';
+import { COFFEE_CARD, deckFor, voteLabel } from './config';
 import type { RosterUser, TicketType } from './types';
 
 interface VoteResultsProps {
-  users: Array<Pick<RosterUser, 'id' | 'name'>>;
+  users: Array<Pick<RosterUser, 'id' | 'name' | 'avatar'>>;
   votes: Record<string, string>;
   ticketType?: TicketType;
   title?: string;
@@ -21,6 +22,7 @@ export function VoteResults({ users, votes, ticketType = 'story', title = 'Vote 
   });
 
   const frequencies = [...counts].map(([value, count]) => ({ value, count, firstSeen: firstSeen.get(value) ?? 0 }));
+  const unanimous = users.length > 0 && frequencies.length === 1 && users.every(({ id }) => votes[id] !== undefined);
   frequencies.sort((left, right) => {
     if (left.count !== right.count) return right.count - left.count;
     const leftDeckOrder = deckOrder.get(left.value);
@@ -54,6 +56,11 @@ export function VoteResults({ users, votes, ticketType = 'story', title = 'Vote 
 
   return (
     <section className="card vote-results" aria-labelledby={headingId}>
+      {unanimous && (
+        <div className="vote-results-confetti" aria-hidden="true">
+          {Array.from({ length: 12 }, (_, index) => <span key={index} />)}
+        </div>
+      )}
       <h2 id={headingId}>{title}</h2>
       <div className="vote-results-layout">
         <div>
@@ -87,8 +94,29 @@ export function VoteResults({ users, votes, ticketType = 'story', title = 'Vote 
           <ul className="participant-votes" aria-label="Participant votes">
             {users.map((user) => (
               <li key={user.id}>
-                <span>{labels.get(user.id)}</span>
-                <strong>{votes[user.id] !== undefined ? voteLabel(votes[user.id], ticketType) : 'No vote'}</strong>
+                <span className="participant-vote-person">
+                  {user.avatar && (
+                    <span className={unanimous ? 'participant-avatar cheering' : 'participant-avatar'}>
+                      <Avatar id={user.avatar} size={32} />
+                    </span>
+                  )}
+                  <span>{labels.get(user.id)}</span>
+                </span>
+                {votes[user.id] !== undefined ? (
+                  <strong className="participant-vote-card">
+                    <span className="participant-vote-card-inner">
+                      <span className="participant-vote-card-back" aria-hidden="true" />
+                      <span className="participant-vote-card-front">
+                        {votes[user.id] === COFFEE_CARD ? (
+                          <span className="coffee-cup">
+                            {voteLabel(votes[user.id], ticketType)}
+                            <span className="coffee-steam" aria-hidden="true" />
+                          </span>
+                        ) : voteLabel(votes[user.id], ticketType)}
+                      </span>
+                    </span>
+                  </strong>
+                ) : <strong>No vote</strong>}
               </li>
             ))}
           </ul>

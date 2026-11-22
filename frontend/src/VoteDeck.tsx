@@ -24,7 +24,12 @@ export function VoteDeck({ selected, ticketType = 'story', disabled = false, onV
             disabled={disabled}
             onClick={() => onVote(value)}
           >
-            {value}
+            {value === COFFEE_CARD ? (
+              <span className="coffee-cup">
+                {value}
+                {selected === value && <span className="coffee-steam" aria-hidden="true" />}
+              </span>
+            ) : value}
             {spike && value !== COFFEE_CARD && (
               <span className="vote-card-unit" aria-hidden="true">
                 {value === '1' ? 'day' : 'days'}

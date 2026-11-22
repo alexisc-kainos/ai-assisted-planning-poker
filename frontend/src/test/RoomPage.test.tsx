@@ -318,7 +318,7 @@ describe('RoomPage', () => {
       const filenames = ['riverside.jpg', 'riverside-2.jpg', 'riverside-3.jpg', 'riverside-4.jpg', 'riverside.jpg'];
       for (const index of [0, 1, 2, 3, 4, 1, 0]) {
         ws.emit({ ...roomState(null), tickets, activeTicketId: tickets[index].id });
-        const scene = document.querySelector('.room-layout > .room-mascot');
+        const scene = document.querySelector('.room-layout > .room-mascot img');
         expect(scene).toHaveAttribute('src', expect.stringContaining(filenames[index]));
         ws.emit({ ...roomState(null), tickets, activeTicketId: tickets[index].id, revealed: true, votes: {} });
         expect(scene).toHaveAttribute('src', expect.stringContaining(filenames[index]));
@@ -328,7 +328,7 @@ describe('RoomPage', () => {
 
       ws.emit({ ...roomState(null), tickets, activeTicketId: null });
       expect(document.querySelector('.room-mascot')).not.toBeInTheDocument();
-      expect(document.querySelector('.room-hero .mascot')).toHaveAttribute(
+      expect(document.querySelector('.room-hero .mascot img')).toHaveAttribute(
         'src', expect.stringContaining('riverside.jpg'),
       );
     });
@@ -337,7 +337,7 @@ describe('RoomPage', () => {
       const ws = await joinAs('user-b');
       const user = userEvent.setup();
       expect(screen.getByText('Now voting:').parentElement).toHaveTextContent('Now voting: Login page');
-      expect(document.querySelector('.room-layout > .room-mascot')).toHaveAttribute(
+      expect(document.querySelector('.room-layout > .room-mascot img')).toHaveAttribute(
         'src', expect.stringContaining('riverside.jpg'),
       );
 
@@ -553,6 +553,43 @@ describe('RoomPage', () => {
       await user.click(screen.getByRole('button', { name: 'Reset votes' }));
 
       expect(ws.sent.slice(-2)).toEqual([{ type: 'reveal' }, { type: 'reset' }]);
+    });
+
+    it('signals when every participant has voted, excluding spectators', async () => {
+      const ws = await joinAs('user-b', 'user-b');
+      const button = screen.getByRole('button', { name: 'Reveal votes' });
+      const initial = roomState(null, 'user-b');
+      const users = [
+        { id: 'user-a', name: 'Alice', hasVoted: true, spectating: false },
+        { id: 'user-b', name: 'Bob', hasVoted: false, spectating: false },
+        { id: 'user-c', name: 'Kim', hasVoted: false, spectating: true },
+      ];
+      ws.emit({ ...initial, users });
+      expect(button).not.toHaveClass('all-votes-in');
+
+      const allVoted = users.map((user) => user.id === 'user-b' ? { ...user, hasVoted: true } : user);
+      ws.emit({ ...initial, users: allVoted });
+      expect(button).toHaveClass('all-votes-in');
+      ws.emit({ ...initial, users: allVoted, revealed: true, votes: { 'user-a': '5', 'user-b': '5' } });
+      expect(button).not.toHaveClass('all-votes-in');
+      ws.emit({ ...initial, users: allVoted, activeTicketId: null });
+      expect(button).not.toHaveClass('all-votes-in');
+      ws.emit({ ...initial, users: [users[2]] });
+      expect(button).not.toHaveClass('all-votes-in');
+    });
+
+    it('shows a decorative check only after the room link is copied', async () => {
+      await joinAs('user-b');
+      const user = userEvent.setup();
+      const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+      const button = screen.getByRole('button', { name: 'Copy link' });
+      expect(button.querySelector('.copy-check')).not.toBeInTheDocument();
+
+      await user.click(button);
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining(`?room=${ROOM}`));
+      expect(screen.getByRole('button', { name: 'Copied!' }).querySelector('.copy-check'))
+        .toHaveAttribute('aria-hidden', 'true');
+      writeText.mockRestore();
     });
 
     it('shows frequency-sorted votes and each participant result', async () => {
