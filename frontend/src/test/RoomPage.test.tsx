@@ -555,6 +555,15 @@ describe('RoomPage', () => {
       expect(ws.sent.slice(-2)).toEqual([{ type: 'reveal' }, { type: 'reset' }]);
     });
 
+    it('clears the vote without replacing the cards when the server resets the round', async () => {
+      const ws = await joinAs('user-b');
+      const card = screen.getByRole('button', { name: '5' });
+      ws.emit(roomState('5'));
+      ws.emit({ ...roomState(null), round: 1 });
+      expect(screen.getByRole('button', { name: '5' })).toBe(card);
+      expect(card).toHaveAttribute('aria-pressed', 'false');
+    });
+
     it('signals when every participant has voted, excluding spectators', async () => {
       const ws = await joinAs('user-b', 'user-b');
       const button = screen.getByRole('button', { name: 'Reveal votes' });

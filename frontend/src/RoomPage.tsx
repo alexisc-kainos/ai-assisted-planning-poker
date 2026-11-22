@@ -105,6 +105,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
               selected={state.myVote}
               ticketType={ticketType}
               disabled={state.revealed}
+              round={state.round}
+              ticketId={state.activeTicketId}
               onVote={(value) => vote(value, state.round)}
             />
           )}

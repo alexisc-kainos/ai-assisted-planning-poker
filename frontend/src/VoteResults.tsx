@@ -106,7 +106,9 @@ export function VoteResults({ users, votes, ticketType = 'story', title = 'Vote 
                   <strong className="participant-vote-card">
                     <span className="participant-vote-card-inner">
                       <span className="participant-vote-card-back" aria-hidden="true" />
-                      <span className="participant-vote-card-front">
+                      <span className={(counts.get(votes[user.id]) ?? 0) > 1
+                        ? 'participant-vote-card-front matching-vote'
+                        : 'participant-vote-card-front'}>
                         {votes[user.id] === COFFEE_CARD ? (
                           <span className="coffee-cup">
                             {voteLabel(votes[user.id], ticketType)}
