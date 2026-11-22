@@ -885,7 +885,7 @@ textarea[aria-invalid='true'] {
   display: flex;
   flex-direction: column;
   gap: 1.75rem;
-  animation: room-enter 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: room-enter 500ms ease-out backwards;
 }
 
 .room-main,
@@ -1061,7 +1061,7 @@ textarea[aria-invalid='true'] {
   align-items: center;
   padding: 0.7rem 0;
   border-bottom: 1px solid var(--line);
-  animation: roster-arrive 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: roster-arrive 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .roster-item:nth-child(2) { animation-delay: 50ms; }
@@ -1091,7 +1091,7 @@ textarea[aria-invalid='true'] {
 }
 
 .badge.voted {
-  animation: vote-confirmed 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: vote-confirmed 380ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 
 .badge.waiting {
@@ -1148,15 +1148,15 @@ textarea[aria-invalid='true'] {
     background-color 180ms ease,
     border-color 180ms ease,
     box-shadow 180ms ease;
-  animation: card-deal 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: card-deal 480ms cubic-bezier(0.22, 1, 0.36, 1) var(--deal-delay, 0ms) backwards;
 }
 
-.vote-card:nth-child(2) { animation-delay: 35ms; }
-.vote-card:nth-child(3) { animation-delay: 70ms; }
-.vote-card:nth-child(4) { animation-delay: 105ms; }
-.vote-card:nth-child(5) { animation-delay: 140ms; }
-.vote-card:nth-child(6) { animation-delay: 175ms; }
-.vote-card:nth-child(n + 7) { animation-delay: 210ms; }
+.vote-card:nth-child(2) { --deal-delay: 35ms; }
+.vote-card:nth-child(3) { --deal-delay: 70ms; }
+.vote-card:nth-child(4) { --deal-delay: 105ms; }
+.vote-card:nth-child(5) { --deal-delay: 140ms; }
+.vote-card:nth-child(6) { --deal-delay: 175ms; }
+.vote-card:nth-child(n + 7) { --deal-delay: 210ms; }
 
 .vote-card:hover:not(:disabled) {
   background: var(--teal-soft);
@@ -1178,7 +1178,10 @@ textarea[aria-invalid='true'] {
   color: #fff;
   transform: translateY(-8px) rotate(1deg);
   box-shadow: 0 12px 24px rgba(47, 107, 98, 0.34);
-  animation: card-select 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  /* Keep card-deal in the list so deselecting doesn't restart the entrance. */
+  animation:
+    card-deal 480ms cubic-bezier(0.22, 1, 0.36, 1) var(--deal-delay, 0ms) backwards,
+    card-select 420ms cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 
 .vote-card:disabled {
@@ -1227,9 +1230,10 @@ button.reveal:hover:not(:disabled)::after {
   }
 }
 
+/* Opacity only: a transform here would make fixed dialogs inside the room room-relative. */
 @keyframes room-enter {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes roster-arrive {
@@ -1283,9 +1287,11 @@ button.reveal:hover:not(:disabled)::after {
   *,
   *::before,
   *::after {
+    animation-delay: 0s !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
+    transition-delay: 0s !important;
     transition-duration: 0.01ms !important;
   }
 }
@@ -1298,7 +1304,7 @@ button.reveal:hover:not(:disabled)::after {
 }
 
 .vote-results {
-  animation: reveal-panel 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: reveal-panel 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   position: relative;
   overflow: hidden;
 }
@@ -1309,7 +1315,7 @@ button.reveal:hover:not(:disabled)::after {
   inset: 0;
   pointer-events: none;
   background: radial-gradient(circle at 82% 18%, rgba(122, 59, 107, 0.09), transparent 24%);
-  animation: reveal-glow 900ms ease-out both;
+  animation: reveal-glow 900ms ease-out backwards;
 }
 
 .vote-results-layout h3 {
@@ -1359,7 +1365,7 @@ button.reveal:hover:not(:disabled)::after {
   border-radius: inherit;
   background: linear-gradient(90deg, #4f8c80, var(--teal));
   transform-origin: left;
-  animation: bar-grow 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: bar-grow 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .vote-result-row:nth-child(2) .vote-result-bar { animation-delay: 70ms; }
@@ -1386,7 +1392,7 @@ button.reveal:hover:not(:disabled)::after {
   gap: 0.75rem;
   padding: 0.45rem 0;
   border-bottom: 1px solid var(--line);
-  animation: participant-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: participant-reveal 420ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .participant-votes li:nth-child(2) { animation-delay: 50ms; }
