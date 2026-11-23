@@ -20,7 +20,8 @@ describe('supplied riverside illustration', () => {
   it.each(['mascot', 'mascot room-mascot'])('preserves the existing %s placement hook', (className) => {
     const { container } = render(<Mascot className={className} />);
     const scene = container.querySelector('img');
-    expect(scene).toHaveAttribute('class', className);
+    expect(scene?.parentElement).toHaveClass(...className.split(' '));
+    expect(scene?.parentElement).toHaveAttribute('aria-hidden', 'true');
     expect(scene).toHaveAttribute('src', expect.stringContaining('riverside.jpg'));
     expect(scene).toHaveAttribute('alt', '');
     expect(scene).toHaveAttribute('aria-hidden', 'true');

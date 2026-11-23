@@ -30,7 +30,14 @@ function CopyLink({ url }: { url: string }) {
       <div className="share-row">
         <input id="join-url" type="text" readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
         <button type="button" onClick={copy}>
-          {copied ? 'Copied!' : 'Copy link'}
+          {copied ? (
+            <>
+              <svg className="copy-check" aria-hidden="true" focusable="false" viewBox="0 0 16 16">
+                <path d="M3 8.5 6.5 12 13 4" />
+              </svg>
+              Copied!
+            </>
+          ) : 'Copy link'}
         </button>
       </div>
     </section>
@@ -74,6 +81,9 @@ export function RoomPage({ roomId }: { roomId: string }) {
     const spectating = state.users.find((user) => user.id === userId)?.spectating ?? false;
     const votes = state.votes ?? {};
     const isHost = state.hostId === userId;
+    const voters = state.users.filter((user) => !user.spectating);
+    const allVotesIn = Boolean(state.activeTicketId) && !state.revealed
+      && voters.length > 0 && voters.every((user) => user.hasVoted);
     return (
       <div className="room-layout">
         <div className="room-main">
@@ -95,6 +105,8 @@ export function RoomPage({ roomId }: { roomId: string }) {
               selected={state.myVote}
               ticketType={ticketType}
               disabled={state.revealed}
+              round={state.round}
+              ticketId={state.activeTicketId}
               onVote={(value) => vote(value, state.round)}
             />
           )}
@@ -107,7 +119,7 @@ export function RoomPage({ roomId }: { roomId: string }) {
             <section className="card voting-controls" aria-labelledby="voting-controls-heading">
               <h2 id="voting-controls-heading">Voting controls</h2>
               <div className="vote-actions">
-                <button type="button" className="reveal" onClick={reveal}>Reveal votes</button>
+                <button type="button" className={allVotesIn ? 'reveal all-votes-in' : 'reveal'} onClick={reveal}>Reveal votes</button>
                 <button type="button" onClick={reset}>Reset votes</button>
               </div>
             </section>

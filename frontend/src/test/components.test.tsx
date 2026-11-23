@@ -212,7 +212,7 @@ describe('Roster', () => {
 describe('VoteDeck', () => {
   it('offers the story-point deck and marks only the selected card as pressed', async () => {
     const onVote = vi.fn();
-    render(<VoteDeck selected="5" onVote={onVote} />);
+    render(<VoteDeck selected="5" round={0} ticketId="ticket-1" onVote={onVote} />);
     const cards = screen.getAllByRole('button');
     expect(cards.map((card) => card.textContent)).toEqual(['1', '2', '3', '5', '8', '13', '20', '☕']);
     expect(screen.getByRole('button', { name: 'Coffee break' })).toBeInTheDocument();
@@ -224,13 +224,24 @@ describe('VoteDeck', () => {
   });
 
   it('disables every card when voting is locked', () => {
-    render(<VoteDeck selected={null} disabled onVote={vi.fn()} />);
+    render(<VoteDeck selected={null} round={0} ticketId="ticket-1" disabled onVote={vi.fn()} />);
     for (const card of screen.getAllByRole('button')) expect(card).toBeDisabled();
+  });
+
+  it('shows decorative steam only while the coffee card is selected', () => {
+    const { rerender } = render(<VoteDeck selected={null} round={0} ticketId="ticket-1" onVote={vi.fn()} />);
+    const coffee = screen.getByRole('button', { name: 'Coffee break' });
+    expect(coffee.querySelector('.coffee-steam')).not.toBeInTheDocument();
+
+    rerender(<VoteDeck selected="☕" round={0} ticketId="ticket-1" onVote={vi.fn()} />);
+    expect(coffee.querySelector('.coffee-steam')).toHaveAttribute('aria-hidden', 'true');
+    rerender(<VoteDeck selected="5" round={0} ticketId="ticket-1" onVote={vi.fn()} />);
+    expect(coffee.querySelector('.coffee-steam')).not.toBeInTheDocument();
   });
 
   it('offers a 1-5 day deck plus coffee for spike tickets', async () => {
     const onVote = vi.fn();
-    render(<VoteDeck selected="3" ticketType="spike" onVote={onVote} />);
+    render(<VoteDeck selected="3" round={0} ticketId="ticket-1" ticketType="spike" onVote={onVote} />);
     expect(screen.getByRole('heading', { name: 'Your vote (days)' })).toBeInTheDocument();
     expect(screen.getAllByRole('button').map((card) => card.getAttribute('aria-label'))).toEqual([
       '1 day',
@@ -244,6 +255,50 @@ describe('VoteDeck', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: '4 days' }));
     expect(onVote).toHaveBeenCalledWith('4');
+  });
+
+  it('gathers and fans out on reset while preserving card focus and interaction', async () => {
+    let reducedMotion = false;
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: reducedMotion })));
+    const cancel = vi.fn();
+    const animate = vi.fn((_keyframes: Keyframe[], _options: KeyframeAnimationOptions) => ({ cancel }));
+    const originalAnimate = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
+    Object.defineProperty(HTMLElement.prototype, 'animate', { configurable: true, value: animate });
+    const onVote = vi.fn();
+    try {
+      const { container, rerender } = render(
+        <VoteDeck selected="5" round={1} ticketId="ticket-1" onVote={onVote} />,
+      );
+      const wrappers = container.querySelectorAll<HTMLElement>('.deck-card');
+      wrappers.forEach((wrapper, index) => {
+        vi.spyOn(wrapper, 'getBoundingClientRect').mockReturnValue(new DOMRect(index * 100, 0, 76, 112));
+      });
+      const card = screen.getByRole('button', { name: '5' });
+      card.focus();
+      expect(animate).not.toHaveBeenCalled();
+
+      rerender(<VoteDeck selected={null} round={2} ticketId="ticket-1" onVote={onVote} />);
+      expect(animate).toHaveBeenCalledTimes(8);
+      expect(animate.mock.calls[0][0][1].transform).toBe('translate(350px, 0px) rotate(0deg)');
+      expect(animate.mock.calls[7][0][1].transform).toBe('translate(-350px, 0px) rotate(0deg)');
+      expect(animate.mock.calls[0][0][2].transform).toBe('translate(350px, 0px) rotate(-14deg)');
+      expect(screen.getByRole('button', { name: '5' })).toBe(card);
+      expect(card).toHaveFocus();
+      await userEvent.setup().click(card);
+      expect(onVote).toHaveBeenCalledWith('5');
+
+      rerender(<VoteDeck selected={null} round={3} ticketId="ticket-1" onVote={onVote} />);
+      expect(cancel).toHaveBeenCalledTimes(8);
+      expect(animate).toHaveBeenCalledTimes(16);
+      rerender(<VoteDeck selected={null} round={4} ticketId="ticket-2" onVote={onVote} />);
+      expect(animate).toHaveBeenCalledTimes(16);
+      reducedMotion = true;
+      rerender(<VoteDeck selected={null} round={5} ticketId="ticket-2" onVote={onVote} />);
+      expect(animate).toHaveBeenCalledTimes(16);
+    } finally {
+      if (originalAnimate) Object.defineProperty(HTMLElement.prototype, 'animate', originalAnimate);
+      else Reflect.deleteProperty(HTMLElement.prototype, 'animate');
+    }
   });
 });
 
@@ -603,9 +658,9 @@ describe('CurrentTicket', () => {
 
 describe('VoteResults', () => {
   const users = [
-    { id: 'u1', name: 'Sam' },
-    { id: 'u2', name: 'Kim' },
-    { id: 'u3', name: 'Lee' },
+    { id: 'u1', name: 'Sam', avatar: 'capybara' },
+    { id: 'u2', name: 'Kim', avatar: 'penguin' },
+    { id: 'u3', name: 'Lee', avatar: 'cat' },
   ];
   const rows = () => within(screen.getByRole('list', { name: 'Vote frequency' })).getAllByRole('listitem');
 
@@ -623,5 +678,49 @@ describe('VoteResults', () => {
   it('labels nothing when there are no votes', () => {
     render(<VoteResults users={users} votes={{}} />);
     expect(screen.queryByText('Most common')).not.toBeInTheDocument();
+  });
+
+  it('celebrates a unanimous vote with decorative confetti', () => {
+    const { container } = render(<VoteResults users={users} votes={{ u1: '5', u2: '5', u3: '5' }} />);
+    const confetti = container.querySelector('.vote-results-confetti');
+    expect(confetti).toHaveAttribute('aria-hidden', 'true');
+    expect(container.querySelectorAll('.participant-avatar.cheering')).toHaveLength(3);
+  });
+
+  it.each([
+    ['different votes', { u1: '5', u2: '5', u3: '8' }],
+    ['a missing vote', { u1: '5', u2: '5' }],
+    ['no votes', {}],
+  ])('does not celebrate with %s', (_description, votes) => {
+    const { container } = render(<VoteResults users={users} votes={votes} />);
+    expect(container.querySelector('.vote-results-confetti')).not.toBeInTheDocument();
+    expect(container.querySelector('.participant-avatar.cheering')).not.toBeInTheDocument();
+  });
+
+  it('does not celebrate an empty room', () => {
+    const { container } = render(<VoteResults users={[]} votes={{}} />);
+    expect(container.querySelector('.vote-results-confetti')).not.toBeInTheDocument();
+  });
+
+  it('renders voted cards and decorative coffee steam while preserving missing votes', () => {
+    const { container } = render(<VoteResults users={users} votes={{ u1: '☕', u2: '5' }} />);
+    const participants = within(screen.getByRole('list', { name: 'Participant votes' }));
+    expect(participants.getByText('☕')).toBeInTheDocument();
+    expect(participants.getByText('5')).toBeInTheDocument();
+    expect(participants.getByText('No vote')).toBeInTheDocument();
+    expect(container.querySelectorAll('.participant-vote-card')).toHaveLength(2);
+    expect(container.querySelector('.participant-vote-card .coffee-steam')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('highlights matching votes without highlighting outliers or missing votes', () => {
+    const { rerender } = render(<VoteResults users={users} votes={{ u1: '5', u2: '5', u3: '8' }} />);
+    const participants = within(screen.getByRole('list', { name: 'Participant votes' }));
+    const entries = participants.getAllByRole('listitem');
+    expect(entries[0].querySelector('.participant-vote-card-front')).toHaveClass('matching-vote');
+    expect(entries[1].querySelector('.participant-vote-card-front')).toHaveClass('matching-vote');
+    expect(entries[2].querySelector('.participant-vote-card-front')).not.toHaveClass('matching-vote');
+
+    rerender(<VoteResults users={users} votes={{ u1: '5', u2: '8' }} />);
+    expect(screen.getByRole('list', { name: 'Participant votes' }).querySelector('.matching-vote')).not.toBeInTheDocument();
   });
 });
